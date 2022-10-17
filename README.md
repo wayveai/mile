@@ -18,7 +18,7 @@ described in:
 > [Blog post](https://wayve.ai/blog/model-based-imitation-learning-for-urban-driving)
 
 <p align="center">
-     <img src="" alt="MILE driving in imagination">
+     <img src="https://github.com/wayveai/mile/releases/download/v1.0/mile_driving_in_imagination.gif" alt="MILE driving in imagination">
      <br/> Our model can drive in the simulator with a driving plan predicted entirely from imagination.
      <br/> From left to right we visualise: RGB input, ground truth bird's-eye view semantic segmentation,
      predicted bird's-eye view segmentation.
@@ -44,7 +44,7 @@ If you find our work useful, please consider citing:
 ## 🏄 Evaluation
 
 - Download [CARLA 0.9.11](https://github.com/carla-simulator/carla/releases/tag/0.9.11).
-- Download the model [pre-trained weights]().
+- Download the model [pre-trained weights](https://github.com/wayveai/mile/releases/download/v1.0/mile.ckpt).
 - Run `bash run/evaluate.sh ${CARLA_PATH} ${CHECKPOINT_PATH} ${PORT}`, with 
  `${CARLA_PATH}` the path to the CARLA .sh executable,
 `${CHECKPOINT_PATH}` the path to the 
