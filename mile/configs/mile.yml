@@ -1,0 +1,12 @@
+LOG_DIR: 'tensorboard_logs'
+TAG: 'mile'
+
+GPUS: 8
+BATCHSIZE: 8
+STEPS: 100000
+
+RECEPTIVE_FIELD: 6
+FUTURE_HORIZON: 6
+
+DATASET:
+  DATAROOT: ''

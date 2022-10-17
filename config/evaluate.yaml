@@ -1,0 +1,26 @@
+defaults:
+  - test_suites: lb_test
+  - agent: mile
+  - _self_
+
+carla_sh_path: ''
+port: 2000
+
+log_level: INFO
+host: localhost
+seed: 0
+no_rendering: false
+kill_running: true
+resume: true
+wb_project: mile
+wb_group: evaluation
+wb_tags: null
+log_video: true
+
+actors:
+  hero:
+    agent: mile
+    reward:
+      entry_point: reward.valeo_action:ValeoAction
+    terminal:
+      entry_point: terminal.leaderboard:Leaderboard

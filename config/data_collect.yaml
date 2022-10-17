@@ -1,0 +1,53 @@
+defaults:
+  - agent:
+    - mile
+    - ppo
+  - test_suites: lb_data
+  - _self_
+
+dataset_root: ''
+carla_sh_path: ''
+port: 2000
+n_episodes: 200
+
+ev_id: hero
+resume: true
+log_level: INFO
+host: localhost
+seed: 0
+no_rendering: false
+kill_running: true
+remove_final_steps: true
+wb_project: mile
+wb_notes: null
+wb_group: data_collection
+wb_tags: null
+log_video: false
+
+actors:
+  hero:
+    driver: ppo
+    reward:
+      entry_point: reward.valeo_action:ValeoAction
+    terminal:
+      entry_point: terminal.leaderboard_dagger:LeaderboardDagger
+      kwargs:
+        max_time: 300
+        no_collision: true
+        no_run_rl: false
+        no_run_stop: false
+
+agent:
+  ppo:
+    wb_run_path: iccv21-roach/trained-models/1929isj0
+    wb_ckpt_step: null
+  mile:
+    obs_configs:
+      birdview_label:
+        module: birdview.chauffeurnet_label
+        width_in_pixels: 192
+        pixels_ev_to_bottom: 32
+        pixels_per_meter: 5.0
+        history_idx: [-16, -11, -6, -1]
+        scale_bbox: true
+        scale_mask_col: 1.0

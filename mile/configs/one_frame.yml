@@ -1,0 +1,16 @@
+LOG_DIR: 'tensorboard_logs'
+TAG: 'one_frame_baseline'
+
+GPUS: 8
+BATCHSIZE: 8
+STEPS: 50000
+
+DATASET:
+  DATAROOT: ''
+
+RECEPTIVE_FIELD: 1
+FUTURE_HORIZON: 0
+
+MODEL:
+  TRANSITION:
+    ENABLED: False

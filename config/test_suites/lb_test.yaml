@@ -1,0 +1,11 @@
+# new town / new weather
+- env_id: LeaderBoard-v0
+  env_configs:
+    carla_map: Town02
+    routes_group: null
+    weather_group: new
+- env_id: LeaderBoard-v0
+  env_configs:
+    carla_map: Town05
+    routes_group: null
+    weather_group: new

@@ -1,0 +1,22 @@
+speed:
+  module: actor_state.speed
+gnss:
+  module: navigation.gnss
+central_rgb:
+  module: camera.rgb
+  fov: 100
+  width: 960
+  height: 600
+  location: [-1.5, 0.0, 2.0]
+  rotation: [0.0, 0.0, 0.0]
+route_plan:
+  module: navigation.waypoint_plan
+  steps: 20
+birdview:
+  module: birdview.chauffeurnet
+  width_in_pixels: 192
+  pixels_ev_to_bottom: 32
+  pixels_per_meter: 5.0
+  history_idx: [-16, -11, -6, -1]
+  scale_bbox: true
+  scale_mask_col: 1.0

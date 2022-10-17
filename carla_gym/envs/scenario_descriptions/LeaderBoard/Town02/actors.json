@@ -1,0 +1,7 @@
+{
+    "ego_vehicles":{
+        "hero": {
+            "model": "vehicle.lincoln.mkz2017"
+        }
+    }
+}
