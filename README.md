@@ -15,7 +15,7 @@ described in:
 [Jamie Shotton](https://jamie.shotton.org/). 
 >
 > [NeurIPS 2022](https://arxiv.org/abs/2210.07729)<br/>
-> [Blog post](https://wayve.ai/blog/model-based-imitation-learning-for-urban-driving)
+> [Blog post](https://wayve.ai/blog/learning-a-world-model-and-a-driving-policy/)
 
 <p align="center">
      <img src="https://github.com/wayveai/mile/releases/download/v1.0/mile_driving_in_imagination.gif" alt="MILE driving in imagination">
