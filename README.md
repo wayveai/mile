@@ -40,10 +40,11 @@ If you find our work useful, please consider citing:
 
 ## ⚙ Setup
 - Create the [conda](https://docs.conda.io/en/latest/miniconda.html) environment by running `conda env create`.
+- Download [CARLA 0.9.11](https://github.com/carla-simulator/carla/releases/tag/0.9.11).
+- Install the carla package by running `conda activate mile` followed by `easy_install ${CARLA_ROOT}/PythonAPI/carla/dist/carla-0.9.11-py3.7-linux-x86_64.egg`.
 
 ## 🏄 Evaluation
 
-- Download [CARLA 0.9.11](https://github.com/carla-simulator/carla/releases/tag/0.9.11).
 - Download the model [pre-trained weights](https://github.com/wayveai/mile/releases/download/v1.0/mile.ckpt).
 - Run `bash run/evaluate.sh ${CARLA_PATH} ${CHECKPOINT_PATH} ${PORT}`, with 
  `${CARLA_PATH}` the path to the CARLA .sh executable,

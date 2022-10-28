@@ -8,7 +8,7 @@ port: 2000
 
 log_level: INFO
 host: localhost
-seed: 0
+seed: 2021
 no_rendering: false
 kill_running: true
 resume: true
