@@ -1,12 +1,12 @@
-import torch
 import pytorch_lightning as pl
+import torch
+from torchmetrics import JaccardIndex
 
 from mile.config import get_cfg
-from mile.models.mile import Mile
-from mile.losses import SegmentationLoss, KLLoss, RegressionLoss, SpatialRegressionLoss
-from mile.models.preprocess import PreProcess
-from mile.metrics import IntersectionOverUnion
 from mile.constants import BIRDVIEW_COLOURS
+from mile.losses import SegmentationLoss, KLLoss, RegressionLoss, SpatialRegressionLoss
+from mile.models.mile import Mile
+from mile.models.preprocess import PreProcess
 
 
 class WorldModelTrainer(pl.LightningModule):
@@ -35,7 +35,7 @@ class WorldModelTrainer(pl.LightningModule):
             self.center_loss = SpatialRegressionLoss(norm=2)
             self.offset_loss = SpatialRegressionLoss(norm=1, ignore_index=self.cfg.INSTANCE_SEG.IGNORE_INDEX)
 
-            self.metric_iou_val = IntersectionOverUnion(n_classes=self.cfg.SEMANTIC_SEG.N_CHANNELS)
+            self.metric_iou_val = JaccardIndex(task='multiclass', num_classes=self.cfg.SEMANTIC_SEG.N_CHANNELS)
 
         if self.cfg.EVAL.RGB_SUPERVISION:
             self.rgb_loss = SpatialRegressionLoss(norm=1)

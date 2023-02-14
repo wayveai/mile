@@ -1,17 +1,17 @@
 """Adapted from https://github.com/zhejz/carla-roach CC-BY-NC 4.0 license."""
 
 import logging
-from omegaconf import OmegaConf
-import torch
 from collections import deque
 
+import torch
+from omegaconf import OmegaConf
+from torchmetrics import JaccardIndex
+
 from carla_gym.utils.config_utils import load_entry_point
-from mile.data.dataset import calculate_geometry
-from mile.data.dataset_utils import preprocess_birdview_and_routemap, preprocess_measurements
-from mile.trainer import WorldModelTrainer
-from mile.data.dataset_utils import calculate_birdview_labels
 from mile.constants import CARLA_FPS, DISPLAY_SEGMENTATION
-from mile.metrics import IntersectionOverUnion
+from mile.data.dataset import calculate_geometry
+from mile.data.dataset_utils import preprocess_birdview_and_routemap, preprocess_measurements, calculate_birdview_labels
+from mile.trainer import WorldModelTrainer
 
 
 class MileAgent:
@@ -69,9 +69,9 @@ class MileAgent:
 
         # Custom metrics
         if self._policy.cfg.SEMANTIC_SEG.ENABLED and DISPLAY_SEGMENTATION:
-            self.iou = IntersectionOverUnion(n_classes=self._policy.cfg.SEMANTIC_SEG.N_CHANNELS).cuda()
-            self.real_time_iou = IntersectionOverUnion(
-                n_classes=self._policy.cfg.SEMANTIC_SEG.N_CHANNELS, compute_on_step=True,
+            self.iou = JaccardIndex(task='multiclass', num_classes=self._policy.cfg.SEMANTIC_SEG.N_CHANNELS).cuda()
+            self.real_time_iou = JaccardIndex(
+                task='multiclass', num_classes=self._policy.cfg.SEMANTIC_SEG.N_CHANNELS, compute_on_step=True,
             ).cuda()
 
         if self.cfg['online_deployment']:

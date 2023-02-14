@@ -17,7 +17,6 @@ dependencies:
     - torchmetrics==0.10.0
     - wandb==0.13.9
     - timm==0.5.4
-
     - hydra-core==1.1.1
     - scipy==1.5.2
     - fvcore==0.1.2.post20201122
