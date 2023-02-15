@@ -1,5 +1,5 @@
-LOG_DIR: 'tensorboard_logs'
 TAG: 'mile'
+LOG_DIR: '/home/anthony/experiments/mile'
 
 GPUS: 8
 BATCHSIZE: 8

@@ -1,5 +1,5 @@
-LOG_DIR: 'tensorboard_logs'
 TAG: 'one_frame_baseline'
+LOG_DIR: '/home/anthony/experiments/mile'
 
 GPUS: 2
 BATCHSIZE: 32
