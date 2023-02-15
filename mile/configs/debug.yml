@@ -4,7 +4,7 @@ LOG_DIR: 'tensorboard_logs'
 TAG: 'debug'
 
 GPUS: 1
-BATCHSIZE: 1
+BATCHSIZE: 2
 
 STEPS: 8
 LOGGING_INTERVAL: 2
@@ -13,5 +13,4 @@ LIMIT_VAL_BATCHES: 2
 N_WORKERS: 0
 
 DATASET:
-  DATAROOT: ''
   VERSION: 'mini'

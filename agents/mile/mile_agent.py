@@ -215,7 +215,7 @@ class MileAgent:
                 bev_prediction = output['bev_segmentation_1'].detach()
                 bev_prediction = torch.argmax(bev_prediction, dim=2)[:, -1]
                 bev_label = policy_input['birdview_label'][:, -1, 0]
-                self.iou(bev_prediction, bev_label)
+                self.iou(bev_prediction.view(-1), bev_label.view(-1))
 
                 real_time_metrics['intersection-over-union'] = self.real_time_iou(bev_prediction, bev_label).mean().item()
 
@@ -225,7 +225,7 @@ class MileAgent:
         metrics = {}
         if self._policy.cfg.SEMANTIC_SEG.ENABLED and DISPLAY_SEGMENTATION:
             scores = self.iou.compute()
-            metrics['intersection-over-union'] = torch.mean(scores).item()
+            metrics['intersection-over-union'] = scores.item()
             self.iou.reset()
         return metrics
 

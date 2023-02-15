@@ -1,3 +1,5 @@
+import os
+
 import pytorch_lightning as pl
 import torch
 from torchmetrics import JaccardIndex
@@ -20,6 +22,8 @@ class WorldModelTrainer(pl.LightningModule):
         # Model
         self.model = Mile(self.cfg)
 
+        self.load_pretrained_weights()
+
         # Losses
         self.action_loss = RegressionLoss(norm=1)
         if self.cfg.MODEL.TRANSITION.ENABLED:
@@ -35,10 +39,44 @@ class WorldModelTrainer(pl.LightningModule):
             self.center_loss = SpatialRegressionLoss(norm=2)
             self.offset_loss = SpatialRegressionLoss(norm=1, ignore_index=self.cfg.INSTANCE_SEG.IGNORE_INDEX)
 
-            self.metric_iou_val = JaccardIndex(task='multiclass', num_classes=self.cfg.SEMANTIC_SEG.N_CHANNELS)
+            self.metric_iou_val = JaccardIndex(
+                task='multiclass', num_classes=self.cfg.SEMANTIC_SEG.N_CHANNELS, average='none',
+            )
 
         if self.cfg.EVAL.RGB_SUPERVISION:
             self.rgb_loss = SpatialRegressionLoss(norm=1)
+
+    def load_pretrained_weights(self):
+        if self.cfg.PRETRAINED.PATH:
+            if os.path.isfile(self.cfg.PRETRAINED.PATH):
+                checkpoint = torch.load(self.cfg.PRETRAINED.PATH, map_location='cpu')['state_dict']
+                checkpoint = {key[6:]: value for key, value in checkpoint.items() if key[:5] == 'model'}
+                del checkpoint['policy.fc.0.weight']
+                del checkpoint['policy.fc.0.bias']
+                del checkpoint['policy.fc.2.weight']
+                del checkpoint['policy.fc.2.bias']
+                del checkpoint['policy.fc.4.weight']
+                del checkpoint['policy.fc.4.bias']
+                del checkpoint['policy.fc.6.weight']
+                del checkpoint['bev_decoder.first_norm.latent_affine.weight']
+                del checkpoint['bev_decoder.first_conv.adaptive_norm.latent_affine.weight']
+                del checkpoint['bev_decoder.middle_conv.0.conv1.adaptive_norm.latent_affine.weight']
+                del checkpoint['bev_decoder.middle_conv.0.conv2.adaptive_norm.latent_affine.weight']
+                del checkpoint['bev_decoder.middle_conv.1.conv1.adaptive_norm.latent_affine.weight']
+                del checkpoint['bev_decoder.middle_conv.1.conv2.adaptive_norm.latent_affine.weight']
+                del checkpoint['bev_decoder.middle_conv.2.conv1.adaptive_norm.latent_affine.weight']
+                del checkpoint['bev_decoder.middle_conv.2.conv2.adaptive_norm.latent_affine.weight']
+                del checkpoint['bev_decoder.conv1.conv1.adaptive_norm.latent_affine.weight']
+                del checkpoint['bev_decoder.conv1.conv2.adaptive_norm.latent_affine.weight']
+                del checkpoint['bev_decoder.conv2.conv1.adaptive_norm.latent_affine.weight']
+                del checkpoint['bev_decoder.conv2.conv2.adaptive_norm.latent_affine.weight']
+                del checkpoint['bev_decoder.conv3.conv1.adaptive_norm.latent_affine.weight']
+                del checkpoint['bev_decoder.conv3.conv2.adaptive_norm.latent_affine.weight']
+
+                self.model.load_state_dict(checkpoint, strict=False)
+                print(f'Loaded weights from: {self.cfg.PRETRAINED.PATH}')
+            else:
+                raise FileExistsError(self.cfg.PRETRAINED.PATH)
 
     def forward(self, batch, deployment=False):
         batch = self.preprocess(batch)
@@ -101,18 +139,14 @@ class WorldModelTrainer(pl.LightningModule):
                 )
                 losses[f'rgb_{downsampling_factor}'] = rgb_weight * discount * rgb_loss
 
-        if self.cfg.MODEL.REWARD.ENABLED:
-            reward_loss = self.action_loss(output['reward'], batch['reward'])
-            losses['reward'] = self.cfg.LOSSES.WEIGHT_REWARD * reward_loss
-
         return losses, output
 
     def training_step(self, batch, batch_idx):
-        if batch_idx == self.cfg.STEPS // 2 and self.cfg.MODEL.TRANSITION.ENABLED:
-            print('!'*50)
-            print('ACTIVE INFERENCE ACTIVATED')
-            print('!'*50)
-            self.model.rssm.active_inference = True
+        # if batch_idx == self.cfg.STEPS // 2 and self.cfg.MODEL.TRANSITION.ENABLED:
+        #     print('!'*50)
+        #     print('ACTIVE INFERENCE ACTIVATED')
+        #     print('!'*50)
+        #     self.model.rssm.active_inference = True
         losses, output = self.shared_step(batch)
 
         self.logging_and_visualisation(batch, output, losses, batch_idx, prefix='train')
@@ -126,8 +160,8 @@ class WorldModelTrainer(pl.LightningModule):
             seg_prediction = output['bev_segmentation_1'].detach()
             seg_prediction = torch.argmax(seg_prediction, dim=2)
             self.metric_iou_val(
-                seg_prediction,
-                batch['birdview_label']
+                seg_prediction.view(-1),
+                batch['birdview_label'].view(-1)
             )
 
         self.logging_and_visualisation(batch, output, loss, batch_idx, prefix='val')

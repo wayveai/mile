@@ -1,12 +1,10 @@
 LOG_DIR: 'tensorboard_logs'
 TAG: 'one_frame_baseline'
 
-GPUS: 8
-BATCHSIZE: 8
+GPUS: 2
+BATCHSIZE: 32
 STEPS: 50000
-
-DATASET:
-  DATAROOT: ''
+N_WORKERS: 4
 
 RECEPTIVE_FIELD: 1
 FUTURE_HORIZON: 0
@@ -14,3 +12,6 @@ FUTURE_HORIZON: 0
 MODEL:
   TRANSITION:
     ENABLED: False
+
+DATASET:
+  DATAROOT: '/home/anthony/datasets/mile'

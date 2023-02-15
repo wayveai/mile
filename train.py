@@ -4,7 +4,6 @@ import socket
 import time
 
 import pytorch_lightning as pl
-from pytorch_lightning.plugins import DDPPlugin
 from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
 
 from mile.config import get_parser, get_cfg
@@ -13,7 +12,7 @@ from mile.trainer import WorldModelTrainer
 
 
 class SaveGitDiffHashCallback(pl.Callback):
-    def on_init_start(self, trainer):
+    def setup(self, trainer, pl_module, stage):
         repo = git.Repo()
         trainer.git_hash = repo.head.object.hexsha
         trainer.git_diff = repo.git.diff(repo.head.commit.tree)
@@ -37,6 +36,7 @@ def main():
     logger = pl.loggers.TensorBoardLogger(save_dir=save_dir)
 
     callbacks = [
+        pl.callbacks.ModelSummary(-1),
         SaveGitDiffHashCallback(),
         pl.callbacks.LearningRateMonitor(),
         ModelCheckpoint(
@@ -53,7 +53,8 @@ def main():
 
     trainer = pl.Trainer(
         gpus=cfg.GPUS,
-        accelerator='ddp',
+        accelerator='gpu',
+        strategy='ddp',
         precision=cfg.PRECISION,
         sync_batchnorm=True,
         max_epochs=None,
@@ -63,10 +64,8 @@ def main():
         log_every_n_steps=cfg.LOGGING_INTERVAL,
         val_check_interval=cfg.VAL_CHECK_INTERVAL,
         limit_val_batches=limit_val_batches,
-        plugins=DDPPlugin(find_unused_parameters=True),
         replace_sampler_ddp=replace_sampler_ddp,
-        weights_summary='full',
-        profiler='simple',
+        num_sanity_val_steps=0,
     )
 
     trainer.fit(model, datamodule=data)

@@ -8,5 +8,8 @@ STEPS: 100000
 RECEPTIVE_FIELD: 6
 FUTURE_HORIZON: 6
 
+PRETRAINED:
+  PATH: '/home/anthony/mile/tensorboard_logs/15February2023at08:02:53GMT_auris_debug/epoch=0-step=8.ckpt'
+
 DATASET:
-  DATAROOT: ''
+  DATAROOT: '/home/anthony/datasets/mile'
