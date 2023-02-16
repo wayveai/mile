@@ -62,7 +62,6 @@ _C.SCHEDULER.PCT_START = 0.2
 _C.DATASET = CN()
 _C.DATASET.DATAROOT = ''
 _C.DATASET.VERSION = 'trainval'
-_C.DATASET.FREQUENCY = 25  # in Hz
 _C.DATASET.STRIDE_SEC = 0.2  # stride between two frames
 _C.DATASET.FILTER_BEGINNING_OF_RUN_SEC = 1.0  # in seconds. the beginning of the run is stationary.
 _C.DATASET.FILTER_NORM_REWARD = 0.6  # filter runs that have a normalised reward below this value.
