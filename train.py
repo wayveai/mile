@@ -65,6 +65,7 @@ def main():
         val_check_interval=cfg.VAL_CHECK_INTERVAL,
         limit_val_batches=limit_val_batches,
         replace_sampler_ddp=replace_sampler_ddp,
+        accumulate_grad_batches=cfg.OPTIMIZER.ACCUMULATE_GRAD_BATCHES,
         num_sanity_val_steps=0,
     )
 
