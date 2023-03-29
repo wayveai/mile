@@ -1,17 +1,18 @@
 #!/bin/bash
 # Adapted from https://github.com/zhejz/carla-roach/ CC-BY-NC 4.0 license.
 
-if [[ $# -ne 3 ]] ; then
-    echo 'Please specify the CARLA executable path, the folder to save the dataset, and the CARLA port.'
+if [[ $# -ne 4 ]] ; then
+    echo 'Please specify the CARLA executable path, the folder to save the dataset, the CARLA port, and test suite.'
     exit 1
 fi
 
 CARLA_PATH=$1
 DATASET_ROOT=$2
 PORT=$3
+TEST_SUITE=$4
 
 data_collect () {
-  python -u data_collect.py --config-name data_collect carla_sh_path=${CARLA_PATH} dataset_root=${DATASET_ROOT} port=${PORT}
+  python -u data_collect.py --config-name data_collect carla_sh_path=${CARLA_PATH} dataset_root=${DATASET_ROOT} port=${PORT} test_suites=${TEST_SUITE}
 }
 
 source ~/miniconda3/etc/profile.d/conda.sh

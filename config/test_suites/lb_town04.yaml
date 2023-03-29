@@ -1,0 +1,6 @@
+- env_id: Endless-v0
+  env_configs:
+    carla_map: Town04
+    num_zombie_vehicles: [100, 200]
+    num_zombie_walkers: [40, 120]
+    weather_group: train

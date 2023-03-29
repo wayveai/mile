@@ -1,7 +1,6 @@
 import os
 from glob import glob
 from PIL import Image
-from time import time
 
 import numpy as np
 import pandas as pd
@@ -10,6 +9,7 @@ import scipy.ndimage
 import torch
 from torch.utils.data import Dataset, DataLoader
 
+from mile.constants import CARLA_FPS
 from mile.data.dataset_utils import integer_to_binary, calculate_birdview_labels
 from mile.utils.geometry_utils import get_out_of_view_mask
 
@@ -98,9 +98,9 @@ class CarlaDataset(Dataset):
                 n_filtered_run += 1
                 continue
 
-            stride = int(self.cfg.DATASET.STRIDE_SEC * self.cfg.DATASET.FREQUENCY)
+            stride = int(self.cfg.DATASET.STRIDE_SEC * CARLA_FPS)
             # Loop across all elements in the dataset, and make all elements in a sequence belong to the same run
-            start_index = int(self.cfg.DATASET.FREQUENCY * self.cfg.DATASET.FILTER_BEGINNING_OF_RUN_SEC)
+            start_index = int(CARLA_FPS * self.cfg.DATASET.FILTER_BEGINNING_OF_RUN_SEC)
             total_length = len(data_run) - stride * self.sequence_length
             for i in range(start_index, total_length):
                 frame_indices = range(i, i + stride * self.sequence_length, stride)

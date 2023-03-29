@@ -1,17 +1,17 @@
 """Adapted from https://github.com/zhejz/carla-roach CC-BY-NC 4.0 license."""
 
 import logging
-from omegaconf import OmegaConf
-import torch
 from collections import deque
 
+import torch
+from omegaconf import OmegaConf
+from torchmetrics import JaccardIndex
+
 from carla_gym.utils.config_utils import load_entry_point
-from mile.data.dataset import calculate_geometry
-from mile.data.dataset_utils import preprocess_birdview_and_routemap, preprocess_measurements
-from mile.trainer import WorldModelTrainer
-from mile.data.dataset_utils import calculate_birdview_labels
 from mile.constants import CARLA_FPS, DISPLAY_SEGMENTATION
-from mile.metrics import IntersectionOverUnion
+from mile.data.dataset import calculate_geometry
+from mile.data.dataset_utils import preprocess_birdview_and_routemap, preprocess_measurements, calculate_birdview_labels
+from mile.trainer import WorldModelTrainer
 
 
 class MileAgent:
@@ -39,7 +39,6 @@ class MileAgent:
             print(f'Loading world model weights from {cfg["ckpt"]}')
             self._policy = trainer.to('cuda')
             game_frequency = CARLA_FPS
-            assert game_frequency == self._policy.cfg.DATASET.FREQUENCY
             model_stride_sec = self._policy.cfg.DATASET.STRIDE_SEC
             receptive_field = trainer.model.receptive_field
             n_image_per_stride = int(game_frequency * model_stride_sec)
@@ -69,9 +68,9 @@ class MileAgent:
 
         # Custom metrics
         if self._policy.cfg.SEMANTIC_SEG.ENABLED and DISPLAY_SEGMENTATION:
-            self.iou = IntersectionOverUnion(n_classes=self._policy.cfg.SEMANTIC_SEG.N_CHANNELS).cuda()
-            self.real_time_iou = IntersectionOverUnion(
-                n_classes=self._policy.cfg.SEMANTIC_SEG.N_CHANNELS, compute_on_step=True,
+            self.iou = JaccardIndex(task='multiclass', num_classes=self._policy.cfg.SEMANTIC_SEG.N_CHANNELS).cuda()
+            self.real_time_iou = JaccardIndex(
+                task='multiclass', num_classes=self._policy.cfg.SEMANTIC_SEG.N_CHANNELS, compute_on_step=True,
             ).cuda()
 
         if self.cfg['online_deployment']:
@@ -215,7 +214,7 @@ class MileAgent:
                 bev_prediction = output['bev_segmentation_1'].detach()
                 bev_prediction = torch.argmax(bev_prediction, dim=2)[:, -1]
                 bev_label = policy_input['birdview_label'][:, -1, 0]
-                self.iou(bev_prediction, bev_label)
+                self.iou(bev_prediction.view(-1), bev_label.view(-1))
 
                 real_time_metrics['intersection-over-union'] = self.real_time_iou(bev_prediction, bev_label).mean().item()
 
@@ -225,7 +224,7 @@ class MileAgent:
         metrics = {}
         if self._policy.cfg.SEMANTIC_SEG.ENABLED and DISPLAY_SEGMENTATION:
             scores = self.iou.compute()
-            metrics['intersection-over-union'] = torch.mean(scores).item()
+            metrics['intersection-over-union'] = scores.item()
             self.iou.reset()
         return metrics
 

@@ -34,9 +34,9 @@ _C.TAG = 'default'
 
 _C.GPUS = 1  # how many gpus to use
 _C.PRECISION = 16  # 16bit or 32bit
-_C.BATCHSIZE = 3
+_C.BATCHSIZE = 2
 _C.STEPS = 50000
-_C.N_WORKERS = 4
+_C.N_WORKERS = 8
 
 _C.VAL_CHECK_INTERVAL = 5000
 _C.LOGGING_INTERVAL = 500
@@ -51,6 +51,7 @@ _C.FUTURE_HORIZON = 1
 _C.OPTIMIZER = CN()
 _C.OPTIMIZER.LR = 1e-4
 _C.OPTIMIZER.WEIGHT_DECAY = 0.01
+_C.OPTIMIZER.ACCUMULATE_GRAD_BATCHES = 1
 
 _C.SCHEDULER = CN()
 _C.SCHEDULER.NAME = 'OneCycleLR'
@@ -62,7 +63,6 @@ _C.SCHEDULER.PCT_START = 0.2
 _C.DATASET = CN()
 _C.DATASET.DATAROOT = ''
 _C.DATASET.VERSION = 'trainval'
-_C.DATASET.FREQUENCY = 25  # in Hz
 _C.DATASET.STRIDE_SEC = 0.2  # stride between two frames
 _C.DATASET.FILTER_BEGINNING_OF_RUN_SEC = 1.0  # in seconds. the beginning of the run is stationary.
 _C.DATASET.FILTER_NORM_REWARD = 0.6  # filter runs that have a normalised reward below this value.
@@ -84,7 +84,7 @@ _C.IMAGE.CAMERA_ROTATION = [0.0, 0.0, 0.0]
 _C.IMAGE.IMAGENET_MEAN = (0.485, 0.456, 0.406)
 _C.IMAGE.IMAGENET_STD = (0.229, 0.224, 0.225)
 
-_C.IMAGE.AUGMENTATION = CN() # image augmentations
+_C.IMAGE.AUGMENTATION = CN()  # image augmentations
 _C.IMAGE.AUGMENTATION.BLUR_PROB = .3
 _C.IMAGE.AUGMENTATION.BLUR_WINDOW = 5
 _C.IMAGE.AUGMENTATION.BLUR_STD = [.1, 1.7]
@@ -126,7 +126,7 @@ _C.ROUTE.AUGMENTATION_SHEAR = (.1, .1)
 # Speed
 #######
 _C.SPEED = CN()
-_C.SPEED.NOISE_STD = 1.4  # in m/s
+_C.SPEED.NOISE_STD = 1.4  # in m/s
 _C.SPEED.NORMALISATION = 5.0  # in m/s
 
 #######
@@ -188,14 +188,15 @@ _C.LOSSES = CN()
 _C.LOSSES.WEIGHT_ACTION = 1.0
 _C.LOSSES.WEIGHT_SEGMENTATION = 0.1
 _C.LOSSES.WEIGHT_INSTANCE = 0.1
-_C.LOSSES.WEIGHT_REWARD = 0.1
 _C.LOSSES.WEIGHT_PROBABILISTIC = 1e-3
 _C.LOSSES.KL_BALANCING_ALPHA = 0.75
+
+_C.PRETRAINED = CN()
+_C.PRETRAINED.PATH = ''
 
 # There parameters are only used to benchmark other models.
 _C.EVAL = CN()
 _C.EVAL.RGB_SUPERVISION = False
-_C.EVAL.CHECKPOINT_PATH = ''
 _C.EVAL.NO_LIFTING = False
 # Dataset size experiments
 _C.EVAL.DATASET_REDUCTION = False
@@ -205,11 +206,8 @@ _C.EVAL.RESOLUTION = CN()
 _C.EVAL.RESOLUTION.ENABLED = False
 _C.EVAL.RESOLUTION.FACTOR = 1
 
-_C.PRETRAINED = CN()
-_C.PRETRAINED.PATH = ''
-
 #########
-# Sampler
+# Sampler
 #########
 _C.SAMPLER = CN()
 _C.SAMPLER.ENABLED = False
@@ -218,11 +216,6 @@ _C.SAMPLER.WITH_STEERING = False
 _C.SAMPLER.N_BINS = 5
 _C.SAMPLER.WITH_ROUTE_COMMAND = False  # not used
 _C.SAMPLER.COMMAND_WEIGHTS = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-
-_C.MODEL.POLICY = CN()
-
-_C.MODEL.REWARD = CN()
-_C.MODEL.REWARD.ENABLED = False
 
 
 def get_parser():
