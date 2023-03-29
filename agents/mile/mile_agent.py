@@ -39,7 +39,6 @@ class MileAgent:
             print(f'Loading world model weights from {cfg["ckpt"]}')
             self._policy = trainer.to('cuda')
             game_frequency = CARLA_FPS
-            #assert game_frequency == self._policy.cfg.DATASET.FREQUENCY
             model_stride_sec = self._policy.cfg.DATASET.STRIDE_SEC
             receptive_field = trainer.model.receptive_field
             n_image_per_stride = int(game_frequency * model_stride_sec)

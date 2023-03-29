@@ -142,11 +142,11 @@ class WorldModelTrainer(pl.LightningModule):
         return losses, output
 
     def training_step(self, batch, batch_idx):
-        # if batch_idx == self.cfg.STEPS // 2 and self.cfg.MODEL.TRANSITION.ENABLED:
-        #     print('!'*50)
-        #     print('ACTIVE INFERENCE ACTIVATED')
-        #     print('!'*50)
-        #     self.model.rssm.active_inference = True
+        if batch_idx == self.cfg.STEPS // 2 and self.cfg.MODEL.TRANSITION.ENABLED:
+            print('!'*50)
+            print('ACTIVE INFERENCE ACTIVATED')
+            print('!'*50)
+            self.model.rssm.active_inference = True
         losses, output = self.shared_step(batch)
 
         self.logging_and_visualisation(batch, output, losses, batch_idx, prefix='train')

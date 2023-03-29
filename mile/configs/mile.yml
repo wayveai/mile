@@ -1,5 +1,5 @@
 TAG: 'mile'
-LOG_DIR: '/home/anthony/experiments/mile'
+LOG_DIR: 'tensorboard_logs'
 
 GPUS: 2
 BATCHSIZE: 4
@@ -12,7 +12,7 @@ RECEPTIVE_FIELD: 6
 FUTURE_HORIZON: 6
 
 PRETRAINED:
-  PATH: '/home/anthony/experiments/mile/15February2023at15:37:31GMT_olympus-mons_one_frame_baseline/epoch=5-step=50000.ckpt'
+  PATH: ''
 
 DATASET:
-  DATAROOT: '/home/anthony/datasets/mile'
+  DATAROOT: ''

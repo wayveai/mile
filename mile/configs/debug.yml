@@ -1,7 +1,7 @@
 _BASE_: 'mile.yml'
 
 TAG: 'debug'
-LOG_DIR: '/home/anthony/experiments/debug'
+LOG_DIR: 'tensorboard_logs'
 
 GPUS: 1
 BATCHSIZE: 2
