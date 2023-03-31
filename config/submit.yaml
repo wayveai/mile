@@ -1,2 +1,2 @@
-EVAL:
-  CHECKPOINT_PATH: '/home/anthony/experiments/dynamic_fixed_weather/27May2022at18:18:42UTC_vm-prod-training-dgx-06_one_frame_measurements/epoch=1-step=49999.ckpt'
+PRETRAINED:
+  PATH: '/home/anthony/experiments/dynamic_fixed_weather/27May2022at18:18:42UTC_vm-prod-training-dgx-06_one_frame_measurements/epoch=1-step=49999.ckpt'
