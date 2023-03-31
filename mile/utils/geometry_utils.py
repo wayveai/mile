@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-
+from mile.constants import EARTH_RADIUS_EQUA
 
 def bev_params_to_intrinsics(size, scale, offsetx):
     """
@@ -56,3 +56,86 @@ def get_out_of_view_mask(cfg):
     mask = ~mask[::-1]
     mask_behind_ego_vehicle = np.ones((int(camera_offset / resolution), mask.shape[1]), dtype=np.bool)
     return np.vstack([mask, mask_behind_ego_vehicle])
+
+
+def calculate_geometry(image_fov, height, width, forward, right, up, roll, pitch, yaw):
+    """Intrinsics and extrinsics for a single camera.
+    See https://github.com/bradyz/carla_utils_fork/blob/dynamic-scene/carla_utils/leaderboard/camera.py
+    and https://github.com/bradyz/carla_utils_fork/blob/dynamic-scene/carla_utils/recording/sensors/camera.py
+    """
+    f = width / (2 * np.tan(image_fov * np.pi / 360.0))
+    cx = width / 2
+    cy = height / 2
+    intrinsics = np.float32([[f, 0, cx], [0, f, cy], [0, 0, 1]])
+    extrinsics = get_extrinsics(forward, right, up, yaw, pitch, roll)
+    return intrinsics, extrinsics
+
+
+def get_extrinsics(forward, right, up, yaw, pitch, roll):
+    # After multiplying by the extrinsics, we want the axis to be (forward, left, up), and centered in the inertial center of the ego-vehicle.
+    assert yaw == pitch == roll == 0.0
+    return np.float32(
+        [
+            [0, 0, 1, forward],
+            [-1, 0, 0, -right],
+            [0, -1, 0, up],
+            [0, 0, 0, 1],
+        ]
+    )
+
+
+def gps_to_location(gps):
+    lat, lon, z = gps
+    lat = float(lat)
+    lon = float(lon)
+    z = float(z)
+    location = carla.Location(z=z)
+    location.x = lon / 180.0 * (math.pi * EARTH_RADIUS_EQUA)
+    location.y = -1.0 * math.log(math.tan((lat + 90.0) * math.pi / 360.0)) * EARTH_RADIUS_EQUA
+    return location
+
+
+def vec_global_to_ref(target_vec_in_global, ref_rot_in_global):
+    """
+    :param target_vec_in_global: carla.Vector3D in global coordinate (world, actor)
+    :param ref_rot_in_global: carla.Rotation in global coordinate (world, actor)
+    :return: carla.Vector3D in ref coordinate
+    """
+    R = carla_rot_to_mat(ref_rot_in_global)
+    np_vec_in_global = np.array(
+        [[target_vec_in_global.x], [target_vec_in_global.y], [target_vec_in_global.z]]
+    )
+    np_vec_in_ref = R.T.dot(np_vec_in_global)
+    target_vec_in_ref = carla.Vector3D(
+        x=np_vec_in_ref[0, 0], y=np_vec_in_ref[1, 0], z=np_vec_in_ref[2, 0]
+    )
+    return target_vec_in_ref
+
+
+def carla_rot_to_mat(carla_rotation):
+    """
+    Transform rpy in carla.Rotation to rotation matrix in np.array
+    :param carla_rotation: carla.Rotation
+    :return: np.array rotation matrix
+    """
+    roll = np.deg2rad(carla_rotation.roll)
+    pitch = np.deg2rad(carla_rotation.pitch)
+    yaw = np.deg2rad(carla_rotation.yaw)
+    yaw_matrix = np.array(
+        [[np.cos(yaw), -np.sin(yaw), 0], [np.sin(yaw), np.cos(yaw), 0], [0, 0, 1]]
+    )
+    pitch_matrix = np.array(
+        [
+            [np.cos(pitch), 0, -np.sin(pitch)],
+            [0, 1, 0],
+            [np.sin(pitch), 0, np.cos(pitch)],
+        ]
+    )
+    roll_matrix = np.array(
+        [
+            [1, 0, 0],
+            [0, np.cos(roll), np.sin(roll)],
+            [0, -np.sin(roll), np.cos(roll)],
+        ]
+    )
+    return yaw_matrix.dot(pitch_matrix).dot(roll_matrix)
