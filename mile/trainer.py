@@ -51,29 +51,8 @@ class WorldModelTrainer(pl.LightningModule):
             if os.path.isfile(self.cfg.PRETRAINED.PATH):
                 checkpoint = torch.load(self.cfg.PRETRAINED.PATH, map_location='cpu')['state_dict']
                 checkpoint = {key[6:]: value for key, value in checkpoint.items() if key[:5] == 'model'}
-                del checkpoint['policy.fc.0.weight']
-                del checkpoint['policy.fc.0.bias']
-                del checkpoint['policy.fc.2.weight']
-                del checkpoint['policy.fc.2.bias']
-                del checkpoint['policy.fc.4.weight']
-                del checkpoint['policy.fc.4.bias']
-                del checkpoint['policy.fc.6.weight']
-                del checkpoint['bev_decoder.first_norm.latent_affine.weight']
-                del checkpoint['bev_decoder.first_conv.adaptive_norm.latent_affine.weight']
-                del checkpoint['bev_decoder.middle_conv.0.conv1.adaptive_norm.latent_affine.weight']
-                del checkpoint['bev_decoder.middle_conv.0.conv2.adaptive_norm.latent_affine.weight']
-                del checkpoint['bev_decoder.middle_conv.1.conv1.adaptive_norm.latent_affine.weight']
-                del checkpoint['bev_decoder.middle_conv.1.conv2.adaptive_norm.latent_affine.weight']
-                del checkpoint['bev_decoder.middle_conv.2.conv1.adaptive_norm.latent_affine.weight']
-                del checkpoint['bev_decoder.middle_conv.2.conv2.adaptive_norm.latent_affine.weight']
-                del checkpoint['bev_decoder.conv1.conv1.adaptive_norm.latent_affine.weight']
-                del checkpoint['bev_decoder.conv1.conv2.adaptive_norm.latent_affine.weight']
-                del checkpoint['bev_decoder.conv2.conv1.adaptive_norm.latent_affine.weight']
-                del checkpoint['bev_decoder.conv2.conv2.adaptive_norm.latent_affine.weight']
-                del checkpoint['bev_decoder.conv3.conv1.adaptive_norm.latent_affine.weight']
-                del checkpoint['bev_decoder.conv3.conv2.adaptive_norm.latent_affine.weight']
 
-                self.model.load_state_dict(checkpoint, strict=False)
+                self.model.load_state_dict(checkpoint, strict=True)
                 print(f'Loaded weights from: {self.cfg.PRETRAINED.PATH}')
             else:
                 raise FileExistsError(self.cfg.PRETRAINED.PATH)
