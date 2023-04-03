@@ -27,8 +27,6 @@ class WorldModelTrainer(pl.LightningModule):
         # Model
         self.model = Mile(self.cfg)
 
-        self.load_pretrained_weights()
-
         # Losses
         self.action_loss = RegressionLoss(norm=1)
         if self.cfg.MODEL.TRANSITION.ENABLED:
