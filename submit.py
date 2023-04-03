@@ -4,11 +4,13 @@ from enum import Enum
 import carla
 import numpy as np
 import torch
+import yaml
 
 from leaderboard.autoagents.autonomous_agent import AutonomousAgent, Track
 from mile.utils.geometry_utils import calculate_geometry, gps_to_location, vec_global_to_ref
 from mile.trainer import WorldModelTrainer
 from mile.config import get_cfg
+from mile.constants import CARLA_FPS
 
 
 def get_entry_point():
@@ -46,9 +48,9 @@ class MILEAgent(AutonomousAgent):
 
     def setup(self, path_to_conf_file):
         self.track = Track.SENSORS
-        self._cfg = get_cfg()
-        self._cfg.merge_from_file(path_to_conf_file)
-        self._training_module = WorldModelTrainer.load_from_checkpoint(self._cfg.EVAL.CHECKPOINT_PATH)
+        _cfg = get_cfg()
+        _cfg.merge_from_file(path_to_conf_file)
+        self._training_module = WorldModelTrainer.load_from_checkpoint(_cfg.PRETRAINED.PATH, path_to_conf_file=path_to_conf_file)
         self._policy = self._training_module.to("cuda").float()
         self._policy = self._policy.eval()
         self._cfg = self._training_module.cfg
@@ -65,7 +67,7 @@ class MILEAgent(AutonomousAgent):
             "height": self._cfg.IMAGE.SIZE[0],
             "fov": self._cfg.IMAGE.FOV,
         }
-        n_image_per_stride = int(self._cfg.DATASET.FREQUENCY * self._cfg.DATASET.STRIDE_SEC)
+        n_image_per_stride = int(CARLA_FPS * self._cfg.DATASET.STRIDE_SEC)
         self._input_queue_size = (self._cfg.RECEPTIVE_FIELD - 1) * n_image_per_stride + 1
         self._sequence_indices = range(0, self._input_queue_size, n_image_per_stride)
         self._input_queue = {

@@ -1,6 +1,9 @@
 import numpy as np
+import math
 import torch
+import carla
 from mile.constants import EARTH_RADIUS_EQUA
+
 
 def bev_params_to_intrinsics(size, scale, offsetx):
     """
@@ -14,7 +17,6 @@ def bev_params_to_intrinsics(size, scale, offsetx):
         [0, 0, 1]
     ], dtype=np.float32)
     return intrinsics_bev
-
 
 def intrinsics_inverse(intrinsics):
     fx = intrinsics[..., 0, 0]

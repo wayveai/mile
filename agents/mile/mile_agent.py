@@ -35,7 +35,7 @@ class MileAgent:
         # prepare policy
         self.input_buffer_size = 1
         if cfg['ckpt'] is not None:
-            trainer = WorldModelTrainer.load_from_checkpoint(cfg['ckpt'])
+            trainer = WorldModelTrainer.load_from_checkpoint(cfg['ckpt'], pretrained_path=cfg['ckpt'])
             print(f'Loading world model weights from {cfg["ckpt"]}')
             self._policy = trainer.to('cuda')
             game_frequency = CARLA_FPS
