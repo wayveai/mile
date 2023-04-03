@@ -16,7 +16,6 @@ class WorldModelTrainer(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters()
         self.cfg = get_cfg(cfg_dict=hparams)
-        print(path_to_conf_file)
         if path_to_conf_file:
             self.cfg.merge_from_file(path_to_conf_file)
         if pretrained_path:
