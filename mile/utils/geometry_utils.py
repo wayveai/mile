@@ -18,6 +18,7 @@ def bev_params_to_intrinsics(size, scale, offsetx):
     ], dtype=np.float32)
     return intrinsics_bev
 
+
 def intrinsics_inverse(intrinsics):
     fx = intrinsics[..., 0, 0]
     fy = intrinsics[..., 1, 1]
