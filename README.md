@@ -52,9 +52,9 @@ If you find our work useful, please consider citing:
 pre-trained weights, and `${PORT}` the port to run CARLA (usually `2000`).
 
 ## 📖 Data Collection
-- Run `bash run/data_collect.sh ${CARLA_PATH} ${DATASET_ROOT} ${PORT}`, with 
+- Run `bash run/data_collect.sh ${CARLA_PATH} ${DATASET_ROOT} ${PORT} ${TEST_SUITE}`, with 
  `${CARLA_PATH}` the path to the CARLA .sh executable,
-`${DATASET_ROOT}` the path where to save data, and `${PORT}` the port to run CARLA (usually `2000`).
+`${DATASET_ROOT}` the path where to save data, `${PORT}` the port to run CARLA (usually `2000`), and `${TEST_SUITE}` the path to the config specifying from which town to collect data (e.g. `config/test_suites/lb_data.yaml`).
 
 ## 🏊 Training
 To train the model from scratch:
