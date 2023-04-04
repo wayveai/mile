@@ -227,17 +227,43 @@ def get_parser():
     return parser
 
 
+def _find_extra_keys(dict1, dict2, path=''):
+    """
+    Recursively finds keys that exist in dict2 but not in dict1.
+    Returns the full path of the missing keys, including the parent key names.
+    """
+    results = []
+    for key in dict2.keys():
+        new_path = f"{path}.{key}" if path else key
+        if key in dict1:
+            if isinstance(dict1[key], dict) and isinstance(dict2[key], dict):
+                results.extend(_find_extra_keys(dict1[key], dict2[key], new_path))
+        else:
+            results.append(new_path)
+        results.sort()
+    return results
+
+
 def get_cfg(args=None, cfg_dict=None):
-    """ First get default config. Then merge cfg_dict. Then merge according to args. """
+    """First get default config. Then merge cfg_dict. Then merge according to args."""
 
     cfg = _C.clone()
 
     if cfg_dict is not None:
+        extra_keys = _find_extra_keys(cfg, cfg_dict)
+        if len(extra_keys) > 0:
+            print(f"Warning - the cfg_dict merging into the main cfg has keys that do not exist in main: {extra_keys}")
+            cfg.set_new_allowed(True)
         cfg.merge_from_other_cfg(CfgNode(cfg_dict))
 
     if args is not None:
-        if args.config_file:
-            cfg.merge_from_file(args.config_file)
-        cfg.merge_from_list(args.opts)
-        cfg.freeze()
+        if args.config:
+            cfg.merge_from_file(args.config)
+
+        if args.config1:
+            cfg.merge_from_file(args.config1)
+
+        if args.opts:
+            cfg.merge_from_list(args.opts)
+
     return cfg
