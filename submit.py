@@ -1,31 +1,25 @@
 from collections import deque
 from enum import Enum
+from PIL import Image
+import os
+import socket
 
 import carla
 import numpy as np
 import torch
 import yaml
 
+from agents.navigation.local_planner import RoadOption
 from leaderboard.autoagents.autonomous_agent import AutonomousAgent, Track
-from mile.utils.geometry_utils import calculate_geometry, gps_to_location, vec_global_to_ref
+
+from mile.data.dataset_utils import preprocess_gps
 from mile.trainer import WorldModelTrainer
 from mile.config import get_cfg
-from mile.constants import CARLA_FPS
+from mile.utils.geometry_utils import calculate_geometry, gps_dict_to_numpy_array, preprocess_measurements
 
 
 def get_entry_point():
     return "MILEAgent"
-
-
-class RouteCommand(Enum):
-    VOID = -1
-    # VOID = 0
-    LEFT = 1
-    RIGHT = 2
-    STRAIGHT = 3
-    LANEFOLLOW = 4
-    CHANGELANELEFT = 5
-    CHANGELANERIGHT = 6
 
 
 class MILEAgent(AutonomousAgent):
@@ -51,6 +45,7 @@ class MILEAgent(AutonomousAgent):
         _cfg = get_cfg()
         _cfg.merge_from_file(path_to_conf_file)
         self._training_module = WorldModelTrainer.load_from_checkpoint(_cfg.PRETRAINED.PATH, path_to_conf_file=path_to_conf_file)
+        print(f'Loaded model from {_cfg.PRETRAINED.PATH}')
         self._policy = self._training_module.to("cuda").float()
         self._policy = self._policy.eval()
         self._cfg = self._training_module.cfg
@@ -60,14 +55,14 @@ class MILEAgent(AutonomousAgent):
             "x": self._cfg.IMAGE.CAMERA_POSITION[0],
             "y": self._cfg.IMAGE.CAMERA_POSITION[1],
             "z": self._cfg.IMAGE.CAMERA_POSITION[2],
-            "roll": self._cfg.IMAGE.CAMERA_ROTATION[0],
             "pitch": self._cfg.IMAGE.CAMERA_ROTATION[0],
-            "yaw": self._cfg.IMAGE.CAMERA_ROTATION[0],
+            "yaw": self._cfg.IMAGE.CAMERA_ROTATION[1],
+            "roll": self._cfg.IMAGE.CAMERA_ROTATION[2],
             "width": self._cfg.IMAGE.SIZE[1],
             "height": self._cfg.IMAGE.SIZE[0],
             "fov": self._cfg.IMAGE.FOV,
         }
-        n_image_per_stride = int(CARLA_FPS * self._cfg.DATASET.STRIDE_SEC)
+        n_image_per_stride = int(self._cfg.DATASET.FREQUENCY * self._cfg.DATASET.STRIDE_SEC)
         self._input_queue_size = (self._cfg.RECEPTIVE_FIELD - 1) * n_image_per_stride + 1
         self._sequence_indices = range(0, self._input_queue_size, n_image_per_stride)
         self._input_queue = {
@@ -77,6 +72,8 @@ class MILEAgent(AutonomousAgent):
             "extrinsics": deque(maxlen=self._input_queue_size),
             "route_command": deque(maxlen=self._input_queue_size),
             "gps_vector": deque(maxlen=self._input_queue_size),
+            "route_command_next": deque(maxlen=self._input_queue_size),
+            "gps_vector_next": deque(maxlen=self._input_queue_size),
             "action": deque(maxlen=self._input_queue_size),
         }
         self._idx_plan = -1
@@ -87,6 +84,12 @@ class MILEAgent(AutonomousAgent):
         for v in self._input_queue.values():
             v.clear()
 
+        # Delete model to clear memory
+        del self._training_module
+        del self._policy
+
+        torch.cuda.empty_cache()
+
     def run_step(self, input_data, timestamp):
         # Leaderboard is at 20fps, skip one frame every 2 frames to match how the model was trained
         if not self._skip:
@@ -96,9 +99,11 @@ class MILEAgent(AutonomousAgent):
                 model_output = self._policy(model_input, deployment=True)
                 self._vehicle_control = self._process_output(model_output)
 
-                self._visualise_outputs(model_input, model_output, timestamp)
+                # if socket.gethostname() == 'auris':
+                #     self._visualise_outputs(model_input, model_output, timestamp)
 
         self._skip = not self._skip
+
         return self._vehicle_control
 
     def _extract_data(self, input_data):
@@ -114,38 +119,43 @@ class MILEAgent(AutonomousAgent):
             self._camera_parameters["x"],
             self._camera_parameters["y"],
             self._camera_parameters["z"],
-            self._camera_parameters["roll"],
             self._camera_parameters["pitch"],
             self._camera_parameters["yaw"],
+            self._camera_parameters["roll"],
         )
-        gps_vector, route_command = self._extract_current_navigation(input_data)
+        route_command, gps_vector, route_command_next, gps_vector_next = self._extract_current_navigation(input_data)
 
         # Move to tensors to GPU and update queue
         image_torch = torch.from_numpy(image_np.copy()).cuda()
         intrinsics_torch = torch.from_numpy(intrinsics_np).cuda()
         extrinsics_torch = torch.from_numpy(extrinsics_np).cuda()
         speed_torch = torch.tensor(speed_float).unsqueeze(0).float().cuda()
-        gps_vector_torch = torch.from_numpy(gps_vector).cuda()
         route_command_torch = torch.from_numpy(route_command).cuda()
-        self._update_queue(
-            image_torch,
-            intrinsics_torch,
-            extrinsics_torch,
-            speed_torch,
-            gps_vector_torch,
-            route_command_torch,
-        )
+        gps_vector_torch = torch.from_numpy(gps_vector).cuda()
+        route_command_next_torch = torch.from_numpy(route_command_next).cuda()
+        gps_vector_next_torch = torch.from_numpy(gps_vector_next).cuda()
+
+        data = {
+            "image": image_torch,
+            "speed": speed_torch,
+            "intrinsics": intrinsics_torch,
+            "extrinsics": extrinsics_torch,
+            "route_command": route_command_torch,
+            "gps_vector": gps_vector_torch,
+            "route_command_next": route_command_next_torch,
+            "gps_vector_next": gps_vector_next_torch,
+        }
+        self._update_queue(data)
 
     def _extract_current_navigation(self, input_data):
         # Select current index from plan
         next_gps, _ = self._global_plan[self._idx_plan + 1]
+        next_gps = gps_dict_to_numpy_array(next_gps)
         ego_gps = input_data["gps"][1]  # Latitude, Longitude, Altitude
-        next_vec_in_global = gps_to_location(next_gps.values()) - gps_to_location(ego_gps)
-        # IMU data: Acc[x,y,z], AngVel[x,y,z], Orientation (radians with north (0.0, -1.0, 0.0) in UE)
-        orientation = input_data["imu"][1][-1]
-        compass = 0.0 if np.isnan(orientation) else orientation
-        ref_rot_in_global = carla.Rotation(yaw=np.rad2deg(compass) - 90.0)
-        loc_in_ev = vec_global_to_ref(next_vec_in_global, ref_rot_in_global)
+        imu = input_data["imu"][1]  # IMU data: Acc[x,y,z], AngVel[x,y,z], Orientation (radians with north (0.0, -1.0, 0.0) in UE)
+
+        # Figure out if we need to go to the next waypoint.
+        loc_in_ev = preprocess_gps(ego_gps, next_gps, imu)
         if np.sqrt(loc_in_ev.x**2 + loc_in_ev.y**2) < 12.0 and loc_in_ev.x < 0.0:
             self._idx_plan += 1
         self._idx_plan = min(self._idx_plan, len(self._global_plan) - 2)
@@ -153,37 +163,42 @@ class MILEAgent(AutonomousAgent):
         # Select route command and relevant GPS point using relevant index
         _, route_command_0 = self._global_plan[max(0, self._idx_plan)]
         gps_point, route_command_1 = self._global_plan[self._idx_plan + 1]
-        if (route_command_0 in [RouteCommand.CHANGELANELEFT, RouteCommand.CHANGELANERIGHT]) and (
-            route_command_1 not in [RouteCommand.CHANGELANELEFT, RouteCommand.CHANGELANERIGHT]
+        # Gps waypoint after the immediate next waypoint.
+        gps_point2, route_command_2 = self._global_plan[min(len(self._global_plan) - 1, self._idx_plan + 2)]
+
+        if (route_command_0 in [RoadOption.CHANGELANELEFT, RoadOption.CHANGELANERIGHT]) and (
+            route_command_1 not in [RoadOption.CHANGELANELEFT, RoadOption.CHANGELANERIGHT]
         ):
             route_command = route_command_1
         else:
             route_command = route_command_0
         route_command = (
-            RouteCommand.LANEFOLLOW if route_command == RouteCommand.VOID else route_command
+            RoadOption.LANEFOLLOW if route_command == RoadOption.VOID else route_command
         )
 
-        # Process route command to start at 0
-        route_command = route_command.value - 1
-        route_command = np.array(route_command, dtype=np.int64)
+        # Handle road option for next next waypoint
+        if (route_command_1 in [RoadOption.CHANGELANELEFT, RoadOption.CHANGELANERIGHT]) \
+                and (route_command_2 not in [RoadOption.CHANGELANELEFT, RoadOption.CHANGELANERIGHT]):
+            route_command_next = route_command_2
+        else:
+            route_command_next = route_command_1
+        route_command_next = (
+            RoadOption.LANEFOLLOW if route_command_next == RoadOption.VOID else route_command_next
+        )
 
-        # Get vector to target gps
-        target_vec_in_global = gps_to_location(gps_point.values()) - gps_to_location(ego_gps)
-        loc_in_ev = vec_global_to_ref(target_vec_in_global, ref_rot_in_global)
-        gps_vector = np.array([loc_in_ev.x, loc_in_ev.y, loc_in_ev.z], dtype=np.float32)
+        route_command, gps_vector = preprocess_measurements(
+            route_command.value, ego_gps, gps_dict_to_numpy_array(gps_point), imu,
+        )
+        route_command_next, gps_vector_next = preprocess_measurements(
+            route_command_next.value, ego_gps, gps_dict_to_numpy_array(gps_point2), imu,
+        )
+        return route_command, gps_vector, route_command_next, gps_vector_next
 
-        return gps_vector, route_command
-
-    def _update_queue(
-        self, image, intrinsics, extrinsics, speed, gps_vector_torch, route_command_torch
-    ):
+    def _update_queue(self, data):
         # Add to queue
-        self._input_queue["image"].append(image)
-        self._input_queue["intrinsics"].append(intrinsics)
-        self._input_queue["extrinsics"].append(extrinsics)
-        self._input_queue["speed"].append(speed)
-        self._input_queue["route_command"].append(route_command_torch)
-        self._input_queue["gps_vector"].append(gps_vector_torch)
+
+        for k, v in data.items():
+            self._input_queue[k].append(v)
 
         # When the action buffer is empty (first forward pass), add a dummy zero action
         if len(self._input_queue["action"]) == 0:
@@ -237,16 +252,14 @@ class MILEAgent(AutonomousAgent):
         return carla.VehicleControl(throttle=throttle, steer=steering, brake=brake)
 
     def _visualise_outputs(self, model_input, model_output, timestamp):
-
         # Very temporary, will clean up.
         save_path = './vis_tmp'
+        os.makedirs(save_path, exist_ok=True)
         image = model_input['image'][0, -1].cpu().numpy().transpose((1, 2, 0))
 
         # unnormalise image
         img_mean = np.array(self._cfg.IMAGE.IMAGENET_MEAN)
         img_std = np.array(self._cfg.IMAGE.IMAGENET_STD)
         image = (255 * (image * img_std + img_mean)).astype(np.uint8)
-        import os
-        from PIL import Image
         image = Image.fromarray(image)
         image.save(os.path.join(save_path, f'image_{int(timestamp * 10):06d}.png'))
