@@ -4,6 +4,7 @@ import numpy as np
 import carla
 import carla_gym.utils.transforms as trans_utils
 import carla_gym.core.task_actor.common.navigation.route_manipulation as gps_util
+from agents.navigation.local_planner import RoadOption
 
 
 def binary_to_integer(binary_array, n_bits):
@@ -60,8 +61,8 @@ def calculate_birdview_labels(birdview, n_classes, has_time_dimension=False):
 
 def preprocess_measurements(route_command, ego_gps, target_gps, imu):
     # preprocess measurements
-    route_command = route_command.copy()
-    route_command[route_command < 0] = 4
+    if route_command == RoadOption.VOID.value:
+        route_command = RoadOption.LANEFOLLOW.value
     route_command -= 1
     route_command = np.array(route_command, dtype=np.int64)
 

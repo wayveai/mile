@@ -106,14 +106,14 @@ class MileAgent:
         image = input_data['central_rgb']['data'].transpose((2, 0, 1))
 
         route_command, gps_vector = preprocess_measurements(
-            input_data['gnss']['command'],
+            input_data['gnss']['command'].squeeze(0),
             input_data['gnss']['gnss'],
             input_data['gnss']['target_gps'],
             input_data['gnss']['imu'],
         )
 
         route_command_next, gps_vector_next = preprocess_measurements(
-            input_data['gnss']['command_next'],
+            input_data['gnss']['command_next'].squeeze(0),
             input_data['gnss']['gnss'],
             input_data['gnss']['target_gps_next'],
             input_data['gnss']['imu'],
@@ -129,9 +129,9 @@ class MileAgent:
 
         # Using gpu inputs
         self.policy_input_queue['image'].append(torch.from_numpy(image.copy()).cuda())
-        self.policy_input_queue['route_command'].append(torch.from_numpy(route_command).squeeze(0).cuda())
+        self.policy_input_queue['route_command'].append(torch.from_numpy(route_command).cuda())
         self.policy_input_queue['gps_vector'].append(torch.from_numpy(gps_vector).cuda())
-        self.policy_input_queue['route_command_next'].append(torch.from_numpy(route_command_next).squeeze(0).cuda())
+        self.policy_input_queue['route_command_next'].append(torch.from_numpy(route_command_next).cuda())
         self.policy_input_queue['gps_vector_next'].append(torch.from_numpy(gps_vector_next).cuda())
         self.policy_input_queue['route_map'].append(route_map)
         self.policy_input_queue['speed'].append(torch.from_numpy(speed).cuda())
