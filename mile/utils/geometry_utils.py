@@ -87,20 +87,3 @@ def get_extrinsics(forward, right, up, pitch, yaw, roll):
     ])
 
     return mat
-
-
-def preprocess_measurements(route_command, ego_gps, target_gps, imu):
-    # preprocess measurements
-    route_command = route_command - 1
-    route_command = np.array(route_command, dtype=np.int64)
-
-    loc_in_ev = preprocess_gps(ego_gps, target_gps, imu)
-    gps_vector = np.array([loc_in_ev.x, loc_in_ev.y], dtype=np.float32)
-    return route_command, gps_vector
-
-
-def gps_dict_to_numpy_array(gps_dict):
-    return np.array(
-        [gps_dict['lat'], gps_dict['lon'], gps_dict['z']],
-        dtype=np.float32
-    )

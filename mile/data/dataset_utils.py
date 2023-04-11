@@ -63,7 +63,7 @@ def preprocess_measurements(route_command, ego_gps, target_gps, imu):
     route_command = route_command.copy()
     route_command[route_command < 0] = 4
     route_command -= 1
-    route_command = np.array(route_command[0], dtype=np.int64)
+    route_command = np.array(route_command, dtype=np.int64)
 
     loc_in_ev = preprocess_gps(ego_gps, target_gps, imu)
     gps_vector = np.array([loc_in_ev.x, loc_in_ev.y], dtype=np.float32)

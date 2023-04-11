@@ -12,10 +12,11 @@ import yaml
 from agents.navigation.local_planner import RoadOption
 from leaderboard.autoagents.autonomous_agent import AutonomousAgent, Track
 
-from mile.data.dataset_utils import preprocess_gps
+from mile.data.dataset_utils import preprocess_gps, preprocess_measurements
 from mile.trainer import WorldModelTrainer
 from mile.config import get_cfg
-from mile.utils.geometry_utils import calculate_geometry, gps_dict_to_numpy_array, preprocess_measurements
+from mile.utils.geometry_utils import calculate_geometry
+from mile.utils.carla_utils import gps_dict_to_numpy_array
 
 
 def get_entry_point():

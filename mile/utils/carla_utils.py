@@ -14,3 +14,10 @@ def get_wheel_base(vehicle):
 
 def convert_steer_to_curvature(steer, wheel_base):
     return -np.tan(steer) / wheel_base
+
+
+def gps_dict_to_numpy_array(gps_dict):
+    return np.array(
+        [gps_dict['lat'], gps_dict['lon'], gps_dict['z']],
+        dtype=np.float32
+    )

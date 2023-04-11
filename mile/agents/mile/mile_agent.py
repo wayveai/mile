@@ -129,9 +129,9 @@ class MileAgent:
 
         # Using gpu inputs
         self.policy_input_queue['image'].append(torch.from_numpy(image.copy()).cuda())
-        self.policy_input_queue['route_command'].append(torch.from_numpy(route_command).cuda())
+        self.policy_input_queue['route_command'].append(torch.from_numpy(route_command).squeeze(0).cuda())
         self.policy_input_queue['gps_vector'].append(torch.from_numpy(gps_vector).cuda())
-        self.policy_input_queue['route_command_next'].append(torch.from_numpy(route_command_next).cuda())
+        self.policy_input_queue['route_command_next'].append(torch.from_numpy(route_command_next).squeeze(0).cuda())
         self.policy_input_queue['gps_vector_next'].append(torch.from_numpy(gps_vector_next).cuda())
         self.policy_input_queue['route_map'].append(route_map)
         self.policy_input_queue['speed'].append(torch.from_numpy(speed).cuda())
