@@ -1,10 +1,10 @@
-entry_point: agents.rl_birdview.models.ppo_policy:PpoPolicy
+entry_point: mile.agents.rl_birdview.models.ppo_policy:PpoPolicy
 kwargs:
   policy_head_arch: [256, 256]
   value_head_arch: [256, 256]
-  features_extractor_entry_point: agents.rl_birdview.models.torch_layers:XtMaCNN
+  features_extractor_entry_point: mile.agents.rl_birdview.models.torch_layers:XtMaCNN
   features_extractor_kwargs: 
     states_neurons: [256,256]
-  distribution_entry_point: agents.rl_birdview.models.distributions:BetaDistribution
+  distribution_entry_point: mile.agents.rl_birdview.models.distributions:BetaDistribution
   distribution_kwargs:
     dist_init: null
