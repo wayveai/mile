@@ -42,6 +42,13 @@ If you find our work useful, please consider citing:
 - Create the [conda](https://docs.conda.io/en/latest/miniconda.html) environment by running `conda env create`.
 - Download [CARLA 0.9.11](https://github.com/carla-simulator/carla/releases/tag/0.9.11).
 - Install the carla package by running `conda activate mile` followed by `easy_install ${CARLA_ROOT}/PythonAPI/carla/dist/carla-0.9.11-py3.7-linux-x86_64.egg`.
+- We also need to add `${CARLA_ROOT}/PythonAPI/carla/` to the `PYTHONPATH`. This can be done by creating a file in the conda environment `~/miniconda3/envs/mile/etc/conda/activate.d/env_vars.sh` containing:
+```
+#!/bin/bash
+
+export CARLA_ROOT="<path_to_carla_root>"
+export PYTHONPATH="${CARLA_ROOT}/PythonAPI/carla/"
+```
 
 ## 🏄 Evaluation
 
