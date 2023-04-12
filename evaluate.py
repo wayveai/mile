@@ -16,7 +16,7 @@ from stable_baselines3.common.vec_env.base_vec_env import tile_images
 
 from carla_gym.utils import config_utils
 from utils import server_utils
-from agents.rl_birdview.utils.wandb_callback import WandbCallback
+from mile.agents.rl_birdview.utils.wandb_callback import WandbCallback
 from mile.constants import CARLA_FPS
 
 log = logging.getLogger(__name__)

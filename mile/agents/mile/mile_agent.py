@@ -9,7 +9,7 @@ from torchmetrics import JaccardIndex
 
 from carla_gym.utils.config_utils import load_entry_point
 from mile.constants import CARLA_FPS, DISPLAY_SEGMENTATION
-from mile.data.dataset import calculate_geometry
+from mile.data.dataset import calculate_geometry_from_config
 from mile.data.dataset_utils import preprocess_birdview_and_routemap, preprocess_measurements, calculate_birdview_labels
 from mile.trainer import WorldModelTrainer
 
@@ -106,14 +106,14 @@ class MileAgent:
         image = input_data['central_rgb']['data'].transpose((2, 0, 1))
 
         route_command, gps_vector = preprocess_measurements(
-            input_data['gnss']['command'],
+            input_data['gnss']['command'].squeeze(0),
             input_data['gnss']['gnss'],
             input_data['gnss']['target_gps'],
             input_data['gnss']['imu'],
         )
 
         route_command_next, gps_vector_next = preprocess_measurements(
-            input_data['gnss']['command_next'],
+            input_data['gnss']['command_next'].squeeze(0),
             input_data['gnss']['gnss'],
             input_data['gnss']['target_gps_next'],
             input_data['gnss']['imu'],
@@ -125,7 +125,7 @@ class MileAgent:
         # Make route_map an RGB image
         route_map = route_map.unsqueeze(0).expand(3, -1, -1)
         speed = input_data['speed']['forward_speed']
-        intrinsics, extrinsics = calculate_geometry(self._policy.cfg)
+        intrinsics, extrinsics = calculate_geometry_from_config(self._policy.cfg)
 
         # Using gpu inputs
         self.policy_input_queue['image'].append(torch.from_numpy(image.copy()).cuda())
