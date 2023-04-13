@@ -2,8 +2,8 @@ defaults:
   - mile/obs_configs: central_rgb_wide
 
 mile:
-  entry_point: mile.agents.mile.mile_agent:MileAgent
+  entry_point: agents.mile.mile_agent:MileAgent
   ckpt: ''
   online_deployment: false
   env_wrapper:
-    entry_point: mile.agents.mile.mile_wrapper:MileWrapper
+    entry_point: agents.mile.mile_wrapper:MileWrapper
