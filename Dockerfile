@@ -95,7 +95,7 @@ RUN chmod +x /home/carla/mycarla.sh
 RUN usermod -s /bin/bash carla
 
 ## ==================================================================
-## Startup
+## Conda
 ## ------------------------------------------------------------------
 # Install miniconda
 ENV CONDA_DIR /opt/conda
@@ -103,17 +103,31 @@ RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86
      /bin/bash ~/miniconda.sh -b -p $CONDA_DIR
 # Put conda in path so we can use conda activate
 ENV PATH=$CONDA_DIR/bin:$PATH
+RUN conda install conda=23.3.1
 
+
+RUN python --version
+
+## ==================================================================
+## Conda environment
+## ------------------------------------------------------------------
 USER carla
 WORKDIR /home/carla
 
 COPY environment.yml /home/carla/environment.yml
+RUN conda env create -f /home/carla/environment.yml
 
-RUN conda env create -f /home/carla/environment.yml && \
-    conda clean --all --yes
+# RUN echo "export CARLA_ROOT=/home/carla/" >> /home/carla/.conda/envs/mile/etc/conda/activate.d/env_vars.sh
+# RUN echo "export PYTHONPATH=\$PYTHONPATH:\$CARLA_ROOT/PythonAPI" >> /home/carla/.conda/envs/mile/etc/conda/activate.d/env_vars.sh
 
-RUN conda --version
-RUN pwd
+# https://pythonspeed.com/articles/activate-conda-dockerfile/
+RUN echo "conda activate mile" >> ~/.bashrc
+SHELL ["/bin/bash", "--login", "-c"]
+
+RUN python --version
+# RUN python -c "import torch"
+#ENV PATH /opt/conda/envs/mile/bin:$PATH
+#RUN pip install /tmp/my_package-1.0.0-py3-none-any.whl
 
 USER root
 ENTRYPOINT ["/on_docker_start.sh"]
