@@ -68,7 +68,7 @@ SANDBOX_IP="$(docker inspect -f '{{ .NetworkSettings.IPAddress }}' $docker_image
 ssh-keygen -f "$HOME/.ssh/known_hosts" -R $SANDBOX_IP
 
 echo "Successfully started the sandbox!"
-echo "SSH with 'ssh root@$SANDBOX_IP'"
+#echo "SSH with 'ssh root@$SANDBOX_IP'"
 echo "SSH with 'ssh carla@$SANDBOX_IP'"
 echo "VNC is availble at <hostip>:8080/vnc.html or via VNC client on port 5900"
 

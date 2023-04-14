@@ -77,12 +77,6 @@ RUN apt-get update && $APT_INSTALL mesa-vulkan-drivers vulkan-utils xdg-user-dir
 # Make flyby window work with touchpad
 RUN sed -i 's/bUseMouseForTouch=False/bUseMouseForTouch=True/' "/home/carla/CarlaUE4/Config/DefaultInput.ini"
 
-## ==================================================================
-## Startup
-## ------------------------------------------------------------------
-COPY setup/on_docker_start.sh /on_docker_start.sh
-RUN chmod +x /on_docker_start.sh
-
 # RUN echo 'su - carla -c "./CarlaUE4.sh -RenderOffScreen -nosound -opengl"' > /home/carla/mycarla.sh
 # Unreal command line commands: https://docs.unrealengine.com/5.1/en-US/command-line-arguments-in-unreal-engine/
 RUN echo "./CarlaUE4.sh -nosound -carla-server -benchmark -fps=10 -quality-level=Epic -RenderOffScreen" > /home/carla/no_screen.sh
@@ -102,11 +96,8 @@ ENV CONDA_DIR /opt/conda
 RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda.sh && \
      /bin/bash ~/miniconda.sh -b -p $CONDA_DIR
 # Put conda in path so we can use conda activate
-ENV PATH=$CONDA_DIR/bin:$PATH
+ENV PATH=$PATH:$CONDA_DIR/bin
 RUN conda install conda=23.3.1
-
-
-RUN python --version
 
 ## ==================================================================
 ## Conda environment
@@ -116,18 +107,29 @@ WORKDIR /home/carla
 
 COPY environment.yml /home/carla/environment.yml
 RUN conda env create -f /home/carla/environment.yml
+#
+RUN echo "export CARLA_ROOT=/home/carla/" >> /home/carla/.conda/envs/mile/etc/conda/activate.d/env_vars.sh
+RUN echo "export PYTHONPATH=\$PYTHONPATH:\$CARLA_ROOT/PythonAPI" >> /home/carla/.conda/envs/mile/etc/conda/activate.d/env_vars.sh
 
-# RUN echo "export CARLA_ROOT=/home/carla/" >> /home/carla/.conda/envs/mile/etc/conda/activate.d/env_vars.sh
-# RUN echo "export PYTHONPATH=\$PYTHONPATH:\$CARLA_ROOT/PythonAPI" >> /home/carla/.conda/envs/mile/etc/conda/activate.d/env_vars.sh
-
-# https://pythonspeed.com/articles/activate-conda-dockerfile/
+## https://pythonspeed.com/articles/activate-conda-dockerfile/
+# RUN echo "source ~/anaconda3/etc/profile.d/conda.sh" >> ~/.bashrc
+RUN echo "source /opt/conda/etc/profile.d/conda.sh" >> ~/.bashrc
 RUN echo "conda activate mile" >> ~/.bashrc
-SHELL ["/bin/bash", "--login", "-c"]
+#SHELL ["/bin/bash", "--login", "-c"]
+SHELL ["conda", "run", "-n", "mile", "/bin/bash", "-c"]
 
 RUN python --version
-# RUN python -c "import torch"
-#ENV PATH /opt/conda/envs/mile/bin:$PATH
-#RUN pip install /tmp/my_package-1.0.0-py3-none-any.whl
+RUN python -c "import carla"
 
+SHELL ["/bin/bash", "-c"]
+
+##ENV PATH /opt/conda/envs/mile/bin:$PATH
+##RUN pip install /tmp/my_package-1.0.0-py3-none-any.whl
+
+## ==================================================================
+## Startup
+## ------------------------------------------------------------------
 USER root
+COPY setup/on_docker_start.sh /on_docker_start.sh
+RUN chmod +x /on_docker_start.sh
 ENTRYPOINT ["/on_docker_start.sh"]
