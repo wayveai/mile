@@ -37,8 +37,12 @@ fi
 
 # docker stop ${docker_image_name}
 # docker rm ${docker_image_name}
-GPUS="device=4"
-# GPUS="all"
+#GPUS="device=4"
+GPUS="all"
+
+# --ipc=host is needed for X display
+# if you can't connect to VNC, check put X11 log at /var/log/x11vnc.log
+# but sometimes you run ouf of shmem and should use wget https://dhampir.no/stuff/bash/shm_wipe
 
 docker run --name $docker_image_name -d -it \
   --gpus="\"$GPUS\",\"capabilities=compute,utility,graphics,display\"" \
@@ -48,9 +52,8 @@ docker run --name $docker_image_name -d -it \
   -p 0.0.0.0:8265:8265 \
   -p 0.0.0.0:6006:6006 \
   -e AUTHORIZED_KEYS="`cat $pub_key_file`" \
-  -v $src_folder:/src \
+  -v $src_folder:/home/carla/mile \
   --ipc=host \
-  -v ~/.${docker_image_name}_home:/root \
   ${docker_image_name} bash
 
 # wait a bit and check if container is up

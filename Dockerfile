@@ -109,12 +109,15 @@ COPY environment.yml /home/carla/environment.yml
 RUN conda env create -f /home/carla/environment.yml
 #
 RUN echo "export CARLA_ROOT=/home/carla/" >> /home/carla/.conda/envs/mile/etc/conda/activate.d/env_vars.sh
-RUN echo "export PYTHONPATH=\$PYTHONPATH:\$CARLA_ROOT/PythonAPI" >> /home/carla/.conda/envs/mile/etc/conda/activate.d/env_vars.sh
+RUN echo "export PYTHONPATH=\$PYTHONPATH:\$CARLA_ROOT/PythonAPI/carla/dist/carla-0.9.11-py3.7-linux-x86_64.egg" >> /home/carla/.conda/envs/mile/etc/conda/activate.d/env_vars.sh
+RUN echo "export PYTHONPATH=\$PYTHONPATH:\$CARLA_ROOT/PythonAPI/carla" >> /home/carla/.conda/envs/mile/etc/conda/activate.d/env_vars.sh
 
 ## https://pythonspeed.com/articles/activate-conda-dockerfile/
 # RUN echo "source ~/anaconda3/etc/profile.d/conda.sh" >> ~/.bashrc
 RUN echo "source /opt/conda/etc/profile.d/conda.sh" >> ~/.bashrc
 RUN echo "conda activate mile" >> ~/.bashrc
+# RUN conda run -n mile easy_install /home/carla/
+
 #SHELL ["/bin/bash", "--login", "-c"]
 SHELL ["conda", "run", "-n", "mile", "/bin/bash", "-c"]
 
@@ -122,6 +125,12 @@ RUN python --version
 RUN python -c "import carla"
 
 SHELL ["/bin/bash", "-c"]
+
+RUN wget -q https://github.com/wayveai/mile/releases/download/v1.0/mile.ckpt
+
+
+# RUN groupadd -r newgroup && usermod -a -G newgroup carla
+
 
 ##ENV PATH /opt/conda/envs/mile/bin:$PATH
 ##RUN pip install /tmp/my_package-1.0.0-py3-none-any.whl
