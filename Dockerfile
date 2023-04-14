@@ -67,7 +67,7 @@ RUN apt-get update; \
       python3-tk \
       libgtk2.0-dev
 
-COPY docker_mlgl/dep/vnc /vnc
+COPY setup/dep/vnc /vnc
 EXPOSE $VNC_PORT
 
 ## ==================================================================
@@ -80,7 +80,7 @@ RUN sed -i 's/bUseMouseForTouch=False/bUseMouseForTouch=True/' "/home/carla/Carl
 ## ==================================================================
 ## Startup
 ## ------------------------------------------------------------------
-COPY on_docker_start.sh /on_docker_start.sh
+COPY setup/on_docker_start.sh /on_docker_start.sh
 RUN chmod +x /on_docker_start.sh
 
 # RUN echo 'su - carla -c "./CarlaUE4.sh -RenderOffScreen -nosound -opengl"' > /home/carla/mycarla.sh
@@ -94,13 +94,26 @@ RUN chmod +x /home/carla/mycarla.sh
 # make bash a default shell for carla user
 RUN usermod -s /bin/bash carla
 
-ENTRYPOINT ["/on_docker_start.sh"]
+## ==================================================================
+## Startup
+## ------------------------------------------------------------------
+# Install miniconda
+ENV CONDA_DIR /opt/conda
+RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda.sh && \
+     /bin/bash ~/miniconda.sh -b -p $CONDA_DIR
+# Put conda in path so we can use conda activate
+ENV PATH=$CONDA_DIR/bin:$PATH
 
-RUN wget \
-    https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh \
-    && mkdir /root/.conda \
-    && bash Miniconda3-latest-Linux-x86_64.sh -b \
-    && rm -f Miniconda3-latest-Linux-x86_64.sh
+USER carla
+WORKDIR /home/carla
+
+COPY environment.yml /home/carla/environment.yml
+
+RUN conda env create -f /home/carla/environment.yml && \
+    conda clean --all --yes
+
 RUN conda --version
+RUN pwd
 
-
+USER root
+ENTRYPOINT ["/on_docker_start.sh"]
