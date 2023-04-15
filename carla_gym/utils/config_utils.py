@@ -9,6 +9,7 @@ import h5py
 import carla
 import numpy as np
 import hydra
+import os
 
 
 def check_h5_maps(env_configs, obs_configs, carla_sh_path):
@@ -22,7 +23,7 @@ def check_h5_maps(env_configs, obs_configs, carla_sh_path):
         # agent does not require birdview map as observation
         return
 
-    save_dir = Path(hydra.utils.get_original_cwd()) / 'carla_gym/core/obs_manager/birdview/maps'
+    save_dir = Path(os.path.dirname(__file__) + '/../') / 'core/obs_manager/birdview/maps'
     txt_command = f'Please run map generation script from project root directory. \n' \
         f'\033[93m' \
         f'python -m carla_gym.utils.birdview_map ' \

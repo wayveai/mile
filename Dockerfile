@@ -1,4 +1,4 @@
-FROM carlasim/carla:0.9.11
+FROM carlasim/carla:0.9.14
 ARG VNC_PORT=8080
 ARG JUPYTER_PORT=8894
 
@@ -30,7 +30,8 @@ RUN $APT_INSTALL \
         zlib1g-dev \
         libjpeg8-dev \
         freeglut3-dev \
-        iputils-ping
+        iputils-ping \
+        psmisc
 
 RUN $APT_INSTALL \
     cmake  \
@@ -77,14 +78,6 @@ RUN apt-get update && $APT_INSTALL mesa-vulkan-drivers vulkan-utils xdg-user-dir
 # Make flyby window work with touchpad
 RUN sed -i 's/bUseMouseForTouch=False/bUseMouseForTouch=True/' "/home/carla/CarlaUE4/Config/DefaultInput.ini"
 
-# RUN echo 'su - carla -c "./CarlaUE4.sh -RenderOffScreen -nosound -opengl"' > /home/carla/mycarla.sh
-# Unreal command line commands: https://docs.unrealengine.com/5.1/en-US/command-line-arguments-in-unreal-engine/
-RUN echo "./CarlaUE4.sh -nosound -carla-server -benchmark -fps=10 -quality-level=Epic -RenderOffScreen" > /home/carla/no_screen.sh
-RUN chmod +x /home/carla/no_screen.sh
-
-RUN echo "./CarlaUE4.sh -nosound -carla-server -benchmark -fps=10 -quality-level=Epic" > /home/carla/mycarla.sh
-RUN chmod +x /home/carla/mycarla.sh
-
 # make bash a default shell for carla user
 RUN usermod -s /bin/bash carla
 
@@ -95,10 +88,10 @@ RUN usermod -s /bin/bash carla
 ENV CONDA_DIR /opt/conda
 RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda.sh && \
      /bin/bash ~/miniconda.sh -b -p $CONDA_DIR
-# Put conda in path so we can use conda activate
+# Put conda in path so we can use conda activate, also init the shell
 ENV PATH=$PATH:$CONDA_DIR/bin
 RUN conda install conda=23.3.1
-RUN ln -s /opt/conda/root/etc/profile.d/conda.sh /etc/profile.d/conda.sh
+RUN ln -s /opt/conda/etc/profile.d/conda.sh /etc/profile.d/conda.sh
 
 ## ==================================================================
 ## Conda environment
@@ -108,24 +101,20 @@ WORKDIR /home/carla
 
 COPY environment.yml /home/carla/environment.yml
 RUN conda env create -f /home/carla/environment.yml
-RUN echo "conda activate mile" >> ~/.bashrc
 #
 RUN echo "export CARLA_ROOT=/home/carla/" >> /home/carla/.conda/envs/mile/etc/conda/activate.d/env_vars.sh
-RUN echo "export PYTHONPATH=\$PYTHONPATH:\$CARLA_ROOT/PythonAPI/carla/dist/carla-0.9.11-py3.7-linux-x86_64.egg" >> /home/carla/.conda/envs/mile/etc/conda/activate.d/env_vars.sh
+RUN echo "export PYTHONPATH=\$PYTHONPATH:\$CARLA_ROOT/PythonAPI/carla/dist/carla-0.9.14-py3.7-linux-x86_64.egg" >> /home/carla/.conda/envs/mile/etc/conda/activate.d/env_vars.sh
 RUN echo "export PYTHONPATH=\$PYTHONPATH:\$CARLA_ROOT/PythonAPI/carla" >> /home/carla/.conda/envs/mile/etc/conda/activate.d/env_vars.sh
 
-## https://pythonspeed.com/articles/activate-conda-dockerfile/
-# RUN echo "source /opt/conda/etc/profile.d/conda.sh" >> ~/.bashrc
+# If you want to run some commands with conda here: https://pythonspeed.com/articles/activate-conda-dockerfile/
+RUN echo "source /opt/conda/etc/profile.d/conda.sh" >> ~/.bashrc
+RUN echo "conda activate mile" >> ~/.bashrc
 
-#SHELL ["/bin/bash", "--login", "-c"]
-SHELL ["conda", "run", "-n", "mile", "/bin/bash", "-c"]
-
-RUN python --version
-RUN python -c "import carla"
-
-SHELL ["/bin/bash", "-c"]
-
+# Mile
 RUN wget -q https://github.com/wayveai/mile/releases/download/v1.0/mile.ckpt
+RUN echo "HYDRA_FULL_ERROR=1 cd /home/carla/mile && run/evaluate.sh  ~/CarlaUE4.sh ~/mile.ckpt 2000" > mile_evaluate.sh
+RUN echo "jupyter notebook --no-browser --ip=0.0.0.0 --port=8894 --notebook-dir=./mile" > jupyter.sh
+RUN chmod +x mile_evaluate.sh jupyter.sh
 
 ## ==================================================================
 ## Startup

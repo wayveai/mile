@@ -1,7 +1,7 @@
 {
     "ego_vehicles":{
         "hero": {
-            "model": "vehicle.lincoln.mkz2017"
+            "model": "vehicle.lincoln.mkz_2017"
         }
     }
 }

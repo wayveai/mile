@@ -25,7 +25,7 @@ class EndlessEnv(CarlaMultiAgentEnv):
 
         actor_configs_dict = {
             'ego_vehicles': {
-                'hero': {'model': 'vehicle.lincoln.mkz2017'}
+                'hero': {'model': 'vehicle.lincoln.mkz_2017'}
             }
         }
         route_descriptions_dict = {

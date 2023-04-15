@@ -113,7 +113,8 @@ def main(cfg: DictConfig):
     config_utils.check_h5_maps(cfg.test_suites, obs_configs, cfg.carla_sh_path)
 
     # resume env_idx from checkpoint.txt
-    last_checkpoint_path = f'{hydra.utils.get_original_cwd()}/outputs/port_{cfg.port}_checkpoint.txt'
+    this_directory = os.path.dirname(__file__)
+    last_checkpoint_path = f'{this_directory}/outputs/port_{cfg.port}_checkpoint.txt'
     if cfg.resume and os.path.isfile(last_checkpoint_path):
         with open(last_checkpoint_path, 'r') as f:
             env_idx = int(f.read())
@@ -128,7 +129,7 @@ def main(cfg: DictConfig):
         return
 
     # resume task_idx from ep_stat_buffer_{env_idx}.json
-    ep_state_buffer_json = f'{hydra.utils.get_original_cwd()}/outputs/port_{cfg.port}_ep_stat_buffer_{env_idx}.json'
+    ep_state_buffer_json = f'{this_directory}/outputs/port_{cfg.port}_ep_stat_buffer_{env_idx}.json'
     if cfg.resume and os.path.isfile(ep_state_buffer_json):
         ep_stat_buffer = json.load(open(ep_state_buffer_json, 'r'))
         ckpt_task_idx = len(ep_stat_buffer['hero'])
