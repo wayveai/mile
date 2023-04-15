@@ -45,7 +45,6 @@ env | egrep -v "^(HOME=|USER=|MAIL=|LC_ALL=|LS_COLORS=|LANG=|HOSTNAME=|PWD=|TERM
 # wait till the display is set
 # su - carla -c "sleep 2 && /home/carla/mycarla.sh" &
 
-# jupyter-lab &
 # give writing permissions to mile folder to 'carla' user
 chmod g+rwx /home/carla/mile
 

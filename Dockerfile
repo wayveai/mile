@@ -113,7 +113,8 @@ RUN echo "conda activate mile" >> ~/.bashrc
 # Mile
 RUN wget -q https://github.com/wayveai/mile/releases/download/v1.0/mile.ckpt
 RUN echo "HYDRA_FULL_ERROR=1 cd /home/carla/mile && run/evaluate.sh  ~/CarlaUE4.sh ~/mile.ckpt 2000" > mile_evaluate.sh
-RUN chmod +x /home/carla/mile_evaluate.sh
+RUN echo "jupyter notebook --no-browser --ip=0.0.0.0 --port=8894 --notebook-dir=./mile" > jupyter.sh
+RUN chmod +x mile_evaluate.sh jupyter.sh
 
 ## ==================================================================
 ## Startup
