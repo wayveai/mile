@@ -37,7 +37,7 @@ setup_passwordless_ssh "root" "${AUTHORIZED_KEYS}"
 setup_passwordless_ssh "carla" "${AUTHORIZED_KEYS}"
 
 # Launch VNC
-# exec supervisord -c /vnc/supervisord.conf &
+exec supervisord -c /vnc/supervisord.conf &
 
 export DISPLAY=:0.0
 env | egrep -v "^(HOME=|USER=|MAIL=|LC_ALL=|LS_COLORS=|LANG=|HOSTNAME=|PWD=|TERM=|SHLVL=|LANGUAGE=|_=)" >> /etc/environment
@@ -49,6 +49,6 @@ env | egrep -v "^(HOME=|USER=|MAIL=|LC_ALL=|LS_COLORS=|LANG=|HOSTNAME=|PWD=|TERM
 # give writing permissions to mile folder to 'carla' user
 chmod g+rwx /home/carla/mile
 
-# HYDRA_FULL_ERROR=1 bash run/evaluate.sh  ~/ ~/mile.ckpt 2000
+# HYDRA_FULL_ERROR=1 bash run/evaluate.sh  ~/CarlaUE4.sh ~/mile.ckpt 2000
 # Xvfb :0 -screen 0 1024x768x24 -listen tcp -ac
 exec "$@"
