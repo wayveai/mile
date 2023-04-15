@@ -119,7 +119,7 @@ class ObsManager(ObsManagerBase):
             c_ev = abs(ev_loc.x - w.location.x) < 1.0 and abs(ev_loc.y - w.location.y) < 1.0
             return c_distance and (not c_ev)
 
-        vehicle_bbox_list = self._world.get_level_bbs(carla.CityObjectLabel.Vehicles)
+        vehicle_bbox_list = self._world.get_level_bbs(carla.CityObjectLabel.Car)
         walker_bbox_list = self._world.get_level_bbs(carla.CityObjectLabel.Pedestrians)
         if self._scale_bbox:
             vehicles = self._get_surrounding_actors(vehicle_bbox_list, is_within_distance, 1.0)
