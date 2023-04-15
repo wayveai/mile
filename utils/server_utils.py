@@ -48,7 +48,7 @@ class CarlaServerManager():
         kill_carla(self.port)
         for cfg in self.env_configs:
             cmd = f'CUDA_VISIBLE_DEVICES={cfg["gpu"]} bash {self._carla_sh_str} ' \
-                f'-fps={CARLA_FPS} -quality-level=Epic -carla-rpc-port={cfg["port"]}'
+                f'-fps={CARLA_FPS} -nosound -quality-level=Epic -carla-rpc-port={cfg["port"]}'
             log.info(cmd)
             server_process = subprocess.Popen(cmd, shell=True, preexec_fn=os.setsid)
         time.sleep(self._t_sleep)
