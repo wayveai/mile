@@ -9,6 +9,7 @@ from omegaconf import DictConfig, OmegaConf
 import logging
 import os.path
 import sys
+import cv2
 from time import time
 
 from gym.wrappers.monitoring.video_recorder import ImageEncoder
@@ -49,7 +50,10 @@ def run_single(run_name, env, agents_dict, agents_log_dir, log_video, max_step=N
         render_imgs = []
         for actor_id, agent in agents_dict.items():
             if log_video:
-                render_imgs.append(agent.render(info[actor_id]['reward_debug'], info[actor_id]['terminal_debug']))
+                img = agent.render(info[actor_id]['reward_debug'], info[actor_id]['terminal_debug'])
+                cv2.imshow('a', img)
+                cv2.waitKey(1)
+                render_imgs.append(img)
             if done[actor_id] and (actor_id not in ep_stat_dict):
                 ep_stat_dict[actor_id] = info[actor_id]['episode_stat']
                 ep_event_dict[actor_id] = info[actor_id]['episode_event']
@@ -158,9 +162,9 @@ def main(cfg: DictConfig):
                    seed=cfg.seed, no_rendering=cfg.no_rendering, **env_setup['env_configs'])
 
     # init wandb
-    wandb.init(project=cfg.wb_project, name=suite_name, group=cfg.wb_group, tags=cfg.wb_tags)
-    wandb.config.update(OmegaConf.to_container(cfg))
-    wandb.save('./config_agent.yaml')
+    # wandb.init(project=cfg.wb_project, name=suite_name, group=cfg.wb_group, tags=cfg.wb_tags)
+    # wandb.config.update(OmegaConf.to_container(cfg))
+    # wandb.save('./config_agent.yaml')
 
     # loop through each route
     for task_idx in range(ckpt_task_idx, env.num_tasks):
@@ -177,7 +181,7 @@ def main(cfg: DictConfig):
                 encoder.capture_frame(im)
             encoder.close()
             encoder = None
-            wandb.log({f'video/{task_idx}-{run_name}': wandb.Video(video_path)}, step=task_idx)
+            # wandb.log({f'video/{task_idx}-{run_name}': wandb.Video(video_path)}, step=task_idx)
 
         # dump events
         diags_json_path = (diags_dir / f'{task_idx:03}_{run_name}.json').as_posix()
@@ -185,12 +189,12 @@ def main(cfg: DictConfig):
             json.dump(ep_event_dict, fd, indent=4, sort_keys=False)
 
         # save diags and agents_log
-        wandb.save(diags_json_path)
+        # wandb.save(diags_json_path)
 
         # save time
-        wandb.log({'time/total_step': timestamp['step'],
-                   'time/fps':  timestamp['step'] / timestamp['relative_wall_time']
-                   }, step=task_idx)
+        # wandb.log({'time/total_step': timestamp['step'],
+        #            'time/fps':  timestamp['step'] / timestamp['relative_wall_time']
+        #            }, step=task_idx)
 
         # save statistics
         for actor_id, ep_stat in ep_stat_dict.items():
@@ -199,11 +203,11 @@ def main(cfg: DictConfig):
             for k, v in ep_stat.items():
                 k_actor = f'{actor_id}/{k}'
                 log_dict[k_actor] = v
-            wandb.log(log_dict, step=task_idx)
+            # wandb.log(log_dict, step=task_idx)
 
         with open(ep_state_buffer_json, 'w') as fd:
             json.dump(ep_stat_buffer, fd, indent=4, sort_keys=True)
-        wandb.save(ep_state_buffer_json)
+        # wandb.save(ep_state_buffer_json)
         # clean up
         list_render.clear()
         ep_stat_dict = None
@@ -218,16 +222,17 @@ def main(cfg: DictConfig):
     table_data = []
     ep_stat_keys = None
     for actor_id, list_ep_stat in json.load(open(ep_state_buffer_json, 'r')).items():
-        avg_ep_stat = WandbCallback.get_avg_ep_stat(list_ep_stat)
-        data = [suite_name, actor_id, str(len(list_ep_stat))]
-        if ep_stat_keys is None:
-            ep_stat_keys = list(avg_ep_stat.keys())
-        data += [f'{avg_ep_stat[k]:.4f}' for k in ep_stat_keys]
-        table_data.append(data)
+        pass
+        # avg_ep_stat = WandbCallback.get_avg_ep_stat(list_ep_stat)
+        # data = [suite_name, actor_id, str(len(list_ep_stat))]
+        # if ep_stat_keys is None:
+        #     ep_stat_keys = list(avg_ep_stat.keys())
+        # data += [f'{avg_ep_stat[k]:.4f}' for k in ep_stat_keys]
+        # table_data.append(data)
 
     # Save all run statistics
     table_columns = ['Suite', 'actor_id', 'n_episode'] + ep_stat_keys
-    wandb.log({'table/summary': wandb.Table(data=table_data, columns=table_columns)})
+    # wandb.log({'table/summary': wandb.Table(data=table_data, columns=table_columns)})
 
     with open(last_checkpoint_path, 'w') as f:
         f.write(f'{env_idx+1}')
