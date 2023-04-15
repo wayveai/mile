@@ -71,7 +71,7 @@ class ObsManager(ObsManagerBase):
         self._parent_actor = parent_actor
         self._world = self._parent_actor.vehicle.get_world()
 
-        maps_h5_path = self._map_dir / (self._world.get_map().name + '.h5')
+        maps_h5_path = self._map_dir / (self._world.get_map().name.rsplit('/', 1)[-1] + '.h5')
         with h5py.File(maps_h5_path, 'r', libver='latest', swmr=True) as hf:
             self._road = np.array(hf['road'], dtype=np.uint8)
             self._lane_marking_all = np.array(hf['lane_marking_all'], dtype=np.uint8)
