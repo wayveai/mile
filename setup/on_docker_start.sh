@@ -49,6 +49,5 @@ env | egrep -v "^(HOME=|USER=|MAIL=|LC_ALL=|LS_COLORS=|LANG=|HOSTNAME=|PWD=|TERM
 # give writing permissions to mile folder to 'carla' user
 chmod g+rwx /home/carla/mile
 
-# HYDRA_FULL_ERROR=1 bash run/evaluate.sh  ~/CarlaUE4.sh ~/mile.ckpt 2000
 # Xvfb :0 -screen 0 1024x768x24 -listen tcp -ac
 exec "$@"
