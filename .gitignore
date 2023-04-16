@@ -13,4 +13,3 @@ carla_gym/envs/__pycache__/__init__.cpython-37.pyc
 
 .idea/
 .ipynb_checkpoints/
-*.ipynb
