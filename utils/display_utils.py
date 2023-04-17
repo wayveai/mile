@@ -2,6 +2,7 @@ from typing import Optional
 import numpy as np
 import tempfile
 import os
+import PIL
 from base64 import b64encode
 from gym.wrappers.monitoring.video_recorder import ImageEncoder
 
@@ -38,3 +39,23 @@ def make_video_in_temp(debug_frames):
 
     print("Video is saved to ", video_path)
     display_video(video_path)
+
+
+def overlay_images(
+        background_img: np.ndarray, foreground_img: np.ndarray, position, alpha: float = 1.0
+) -> np.ndarray:
+    background_img = PIL.Image.fromarray(background_img, 'RGB')
+    foreground_img = PIL.Image.fromarray(foreground_img, 'RGB')
+
+    a_channel = int(255 * alpha)
+    mask = PIL.Image.new('RGBA', foreground_img.size, (0, 0, 0, a_channel))
+
+    background_img.paste(foreground_img, box=position, mask=mask)
+    return np.asarray(background_img, dtype=np.uint8)
+
+
+def downsample(image, scale_factor):
+    pil_image = PIL.Image.fromarray(np.uint8(image))
+    downsampled_image = pil_image.resize((int(image.shape[1] * scale_factor), int(image.shape[0] * scale_factor)),
+                                         resample=PIL.Image.LANCZOS)
+    return np.array(downsampled_image)
