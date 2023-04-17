@@ -10,4 +10,5 @@ SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 docker build -t $PROJECT_NAME $SCRIPT_DIR
 ./setup/start_sandbox.sh $PROJECT_NAME $SCRIPT_DIR
 
-ssh carla@172.17.0.2
+SANDBOX_IP="$(docker inspect -f '{{ .NetworkSettings.IPAddress }}' $PROJECT_NAME)"
+ssh carla@$SANDBOX_IP

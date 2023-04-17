@@ -130,9 +130,6 @@ class MileAgent:
         # for debug view
         self._obs_configs['route_plan'] = {'module': 'navigation.waypoint_plan', 'steps': 20}
 
-        # prepare policy
-        self.input_buffer_size = 1
-
         trainer = WorldModelTrainer.load_from_checkpoint(cfg_ckpt, pretrained_path=cfg_ckpt)
         print(f'Loading world model weights from {cfg_ckpt}')
         self._policy = trainer.to('cuda')
@@ -247,22 +244,6 @@ class MileAgent:
             policy_input[k] = v[:, self.sequence_indices]
 
         return policy_input
-
-
-def process_act(action):
-    acc, steer = action.astype(np.float64)
-    if acc >= 0.0:
-        throttle = acc
-        brake = 0.0
-    else:
-        throttle = 0.0
-        brake = np.abs(acc)
-
-    throttle = np.clip(throttle, 0, 1)
-    steer = np.clip(steer, -1, 1)
-    brake = np.clip(brake, 0, 1)
-    control = carla.VehicleControl(throttle=throttle, steer=steer, brake=brake)
-    return control
 
 
 def im_render(policy_input, policy_cfg, upsample_bev_factor=2):
