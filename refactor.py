@@ -43,54 +43,92 @@ def set_sync_mode(world, tm, sync):
 
 
 
-def build_all_tasks(carla_map):
-    assert carla_map in ['Town01', 'Town02', 'Town03', 'Town04', 'Town05', 'Town06']
-    num_zombie_vehicles = {
-        'Town01': 120,
-        'Town02': 70,
-        'Town03': 70,
-        'Town04': 150,
-        'Town05': 120,
-        'Town06': 120
-    }[carla_map]
-    num_zombie_walkers = {
-        'Town01': 120,
-        'Town02': 70,
-        'Town03': 70,
-        'Town04': 80,
-        'Town05': 120,
-        'Town06': 80
-    }[carla_map]
+# def build_all_tasks(carla_map):
+#     assert carla_map in ['Town01', 'Town02', 'Town03', 'Town04', 'Town05', 'Town06']
+#     num_zombie_vehicles = {
+#         'Town01': 120,
+#         'Town02': 70,
+#         'Town03': 70,
+#         'Town04': 150,
+#         'Town05': 120,
+#         'Town06': 120
+#     }[carla_map]
+#     num_zombie_walkers = {
+#         'Town01': 120,
+#         'Town02': 70,
+#         'Town03': 70,
+#         'Town04': 80,
+#         'Town05': 120,
+#         'Town06': 80
+#     }[carla_map]
+#
+# #     num_zombie_vehicles = 0
+# #     num_zombie_walkers = 0
+#
+#     weather = 'ClearNoon'
+#     description_folder = CARLA_GYM_ROOT_DIR / 'envs/scenario_descriptions/LeaderBoard' / carla_map
+#
+#     actor_configs_dict = json.load(open(description_folder / 'actors.json'))
+#     route_descriptions_dict = config_utils.parse_routes_file(description_folder / 'routes.xml')
+#
+#     all_tasks = []
+#     for route_id, route_description in route_descriptions_dict.items():
+#         task = {
+#             'weather': weather,
+#             'description_folder': description_folder,
+#             'route_id': route_id,
+#             'num_zombie_vehicles': num_zombie_vehicles,
+#             'num_zombie_walkers': num_zombie_walkers,
+#             'ego_vehicles': {
+#                 'routes': route_description['ego_vehicles'],
+#                 'actors': actor_configs_dict['ego_vehicles'],
+#             },
+#             'scenario_actors': {
+#                 'routes': route_description['scenario_actors'],
+#                 'actors': actor_configs_dict['scenario_actors']
+#             } if 'scenario_actors' in actor_configs_dict else {}
+#         }
+#         all_tasks.append(task)
+#
+#     return all_tasks
 
-    num_zombie_vehicles = 0
-    num_zombie_walkers = 0
 
+def build_all_tasks(num_zombie_vehicles, num_zombie_walkers):
     weather = 'ClearNoon'
-    description_folder = CARLA_GYM_ROOT_DIR / 'envs/scenario_descriptions/LeaderBoard' / carla_map
 
-    actor_configs_dict = json.load(open(description_folder / 'actors.json'))
-    route_descriptions_dict = config_utils.parse_routes_file(description_folder / 'routes.xml')
-
-    all_tasks = []
-    for route_id, route_description in route_descriptions_dict.items():
-        task = {
-            'weather': weather,
-            'description_folder': description_folder,
-            'route_id': route_id,
-            'num_zombie_vehicles': num_zombie_vehicles,
-            'num_zombie_walkers': num_zombie_walkers,
-            'ego_vehicles': {
-                'routes': route_description['ego_vehicles'],
-                'actors': actor_configs_dict['ego_vehicles'],
-            },
-            'scenario_actors': {
-                'routes': route_description['scenario_actors'],
-                'actors': actor_configs_dict['scenario_actors']
-            } if 'scenario_actors' in actor_configs_dict else {}
+    actor_configs_dict = {
+        'ego_vehicles': {
+            'hero': {'model': 'vehicle.lincoln.mkz_2017'}
         }
-        all_tasks.append(task)
+    }
+    route_descriptions_dict = {
+        'ego_vehicles': {
+            'hero': []
+        }
+    }
+    endless_dict = {
+        'ego_vehicles': {
+            'hero': True
+        }
+    }
+    all_tasks = []
+    task = {
+        'weather': weather,
+        'description_folder': 'None',
+        'route_id': 0,
+        'num_zombie_vehicles': num_zombie_vehicles,
+        'num_zombie_walkers': num_zombie_walkers,
+        'ego_vehicles': {
+            'routes': route_descriptions_dict['ego_vehicles'],
+            'actors': actor_configs_dict['ego_vehicles'],
+            'endless': endless_dict['ego_vehicles']
+        },
+        'scenario_actors': {},
+    }
+    all_tasks.append(task)
 
     return all_tasks
+
 
 
 def kill_carla(port=2005):
@@ -135,7 +173,7 @@ obs_configs = {
         #                      'location': [-1.5, 0.0, 2.0], 'rotation': [0.0, 0.0, 0.0]},
         #         'route_plan': {'module': 'navigation.waypoint_plan', 'steps': 20},
         'birdview': {
-            'module': 'birdview.chauffeurnet', 'width_in_pixels': 192,
+            'module': 'birdview.chauffeurnet', 'width_in_pixels': 192*2,
             'pixels_ev_to_bottom': 32, 'pixels_per_meter': 5.0,
             'history_idx': [-16, -11, -6, -1], 'scale_bbox': True, 'scale_mask_col': 1.0}},
     #     'hero': {}
@@ -147,7 +185,8 @@ env_configs = {'carla_map': 'Town01', 'routes_group': None, 'weather_group': 'ne
 
 
 def main():
-    tasks = build_all_tasks(env_configs['carla_map'])
+    # tasks = build_all_tasks(env_configs['carla_map'])
+    tasks = build_all_tasks(100, 100)
 
     server_manager = CarlaServerManager(
         '/home/carla/CarlaUE4.sh', port=2000, fps=10, display=False, t_sleep=10
@@ -190,24 +229,16 @@ def main():
         control_dict = {
             actor_id: carla.VehicleControl(throttle=0.8, steer=0, brake=0.)
         }
-
-        env._ev_handler.apply_control(control_dict)
-        env._sa_handler.tick()
-        # tick world
-        env._world.tick()
-
-        env._ev_handler.tick(env._timestamp.copy())
-
         # get observations
-        obs = env._om_handler.get_observation(env._timestamp.copy())
+        obs = env.step(control_dict)
 
         timestamps.append(time.time())
 
     dt = np.median(np.diff(timestamps))
     print(f"dt={dt:.2f}, FPS={1. / dt:.1f}")
     print(len(debug_frames))
-    # if len(debug_frames):
-    #     display_utils.make_video_in_temp(debug_frames)
+    if len(debug_frames):
+        display_utils.make_video_in_temp(debug_frames)
 
     # env.close()
     # server_manager.stop()
@@ -250,7 +281,6 @@ class CarlaMultiAgentEnv:
         self._sa_handler = ScenarioActorHandler(self._client)
 
     def reset(self, task_idx):
-
         task = self._all_tasks[task_idx].copy()
 
         ev_spawn_locations = self._ev_handler.reset(task['ego_vehicles'])
@@ -277,5 +307,27 @@ class CarlaMultiAgentEnv:
         _, _, _ = self._ev_handler.tick(timestamp)
         obs_dict = self._om_handler.get_observation(timestamp)
         return obs_dict
+
+    def step(self, control_dict):
+        self._ev_handler.apply_control(control_dict)
+        self._sa_handler.tick()
+        # tick world
+        self._world.tick()
+
+        # update timestamp
+        snap_shot = self._world.get_snapshot()
+        self._timestamp['step'] = snap_shot.timestamp.frame-self._timestamp['start_frame']
+        self._timestamp['frame'] = snap_shot.timestamp.frame
+        self._timestamp['wall_time'] = snap_shot.timestamp.platform_timestamp
+        self._timestamp['relative_wall_time'] = self._timestamp['wall_time'] - self._timestamp['start_wall_time']
+        self._timestamp['simulation_time'] = snap_shot.timestamp.elapsed_seconds
+        self._timestamp['relative_simulation_time'] = self._timestamp['simulation_time'] \
+            - self._timestamp['start_simulation_time']
+
+        return self._om_handler.get_observation(self.timestamp)
+
+    @property
+    def timestamp(self):
+        return self._timestamp.copy()
 
 main()
