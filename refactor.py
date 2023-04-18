@@ -174,32 +174,32 @@ def main():
     print('starting the loop')
     for counter in range(200):
         raw_input = obs[actor_id]
-        # if counter % 50 == 0:
-        #     print(counter)
-        #     settings = env._world.get_settings()
-        #     print(settings.no_rendering_mode)
-        #     print(raw_input.keys())
+        if counter % 50 == 0:
+            print(counter)
+            settings = env._world.get_settings()
+            print(settings.no_rendering_mode)
+            print(raw_input.keys())
 
-        # #         front_rgb = raw_input['central_rgb']['data']
-        # bev_rgb = raw_input['birdview']['rendered']
-        #
-        # #         img = overlay_images(downsample(front_rgb, 0.6), bev_rgb, (20, 20))
-        # if bev_rgb is not None:
-        #     debug_frames.append(bev_rgb)
-        #
-        # control_dict = {
-        #     actor_id: carla.VehicleControl(throttle=0.8, steer=0, brake=0.)
-        # }
-        #
-        # env._ev_handler.apply_control(control_dict)
-        # env._sa_handler.tick()
+        #         front_rgb = raw_input['central_rgb']['data']
+        bev_rgb = raw_input['birdview']['rendered']
+
+        #         img = overlay_images(downsample(front_rgb, 0.6), bev_rgb, (20, 20))
+        if bev_rgb is not None:
+            debug_frames.append(bev_rgb)
+
+        control_dict = {
+            actor_id: carla.VehicleControl(throttle=0.8, steer=0, brake=0.)
+        }
+
+        env._ev_handler.apply_control(control_dict)
+        env._sa_handler.tick()
         # tick world
         env._world.tick()
 
-        # env._ev_handler.tick(env.timestamp)
-        #
-        # # get observations
-        # obs = env._om_handler.get_observation(env.timestamp)
+        env._ev_handler.tick(env._timestamp.copy())
+
+        # get observations
+        obs = env._om_handler.get_observation(env._timestamp.copy())
 
         timestamps.append(time.time())
 
@@ -217,58 +217,9 @@ class CarlaMultiAgentEnv:
     def __init__(self, carla_map, host, port, seed, no_rendering,
                  obs_configs, reward_configs, terminal_configs, all_tasks):
         self._all_tasks = all_tasks
-        self._init_client(carla_map, host, port, seed=seed, no_rendering=no_rendering)
 
-        # define observation spaces exposed to agent
-        self._om_handler = ObsManagerHandler(obs_configs)
-        # this contains all info related to reward, traffic lights violations etc
-        self._ev_handler = EgoVehicleHandler(self._client, reward_configs, terminal_configs)
-        self._zw_handler = ZombieWalkerHandler(self._client)
-        self._zv_handler = ZombieVehicleHandler(self._client, tm_port=self._tm.get_port())
-        self._sa_handler = ScenarioActorHandler(self._client)
-        self._wt_handler = WeatherHandler(self._world)
-
-    @property
-    def timestamp(self):
-        return self._timestamp.copy()
-
-    def reset(self, task_idx):
-        task = self._all_tasks[task_idx].copy()
-        self._wt_handler.reset(task['weather'])
-        ev_spawn_locations = self._ev_handler.reset(task['ego_vehicles'])
-        self._sa_handler.reset(task['scenario_actors'], self._ev_handler.ego_vehicles)
-        self._zw_handler.reset(task['num_zombie_walkers'], ev_spawn_locations)
-        self._zv_handler.reset(task['num_zombie_vehicles'], ev_spawn_locations)
-        self._om_handler.reset(self._ev_handler.ego_vehicles)
-
-        self._world.tick()
-
-        snap_shot = self._world.get_snapshot()
-        self._timestamp = {
-            'step': 0,
-            'frame': snap_shot.timestamp.frame,
-            'relative_wall_time': 0.0,
-            'wall_time': snap_shot.timestamp.platform_timestamp,
-            'relative_simulation_time': 0.0,
-            'simulation_time': snap_shot.timestamp.elapsed_seconds,
-            'start_frame': snap_shot.timestamp.frame,
-            'start_wall_time': snap_shot.timestamp.platform_timestamp,
-            'start_simulation_time': snap_shot.timestamp.elapsed_seconds
-        }
-        _, _, _ = self._ev_handler.tick(self.timestamp)
-        obs_dict = self._om_handler.get_observation(self.timestamp)
-        return obs_dict
-
-    def _init_client(self, carla_map, host, port, seed=2021, no_rendering=False):
-        client = None
-        while client is None:
-            try:
-                client = carla.Client(host, port)
-                client.set_timeout(10.0)
-            except RuntimeError as re:
-                if "timeout" not in str(re) and "time-out" not in str(re):
-                    print("Could not connect to Carla server because:", re)
-                client = None
+        client = carla.Client(host, port)
+        client.set_timeout(10.0)
 
         self._client = client
         self._world = client.load_world(carla_map)
@@ -290,7 +241,41 @@ class CarlaMultiAgentEnv:
         # register traffic lights
         TrafficLightHandler.reset(self._world)
 
+        # define observation spaces exposed to agent
+        self._om_handler = ObsManagerHandler(obs_configs)
+        # this contains all info related to reward, traffic lights violations etc
+        self._ev_handler = EgoVehicleHandler(self._client, reward_configs, terminal_configs)
+        self._zw_handler = ZombieWalkerHandler(self._client)
+        self._zv_handler = ZombieVehicleHandler(self._client, tm_port=self._tm.get_port())
+        self._sa_handler = ScenarioActorHandler(self._client)
 
+    def reset(self, task_idx):
 
+        task = self._all_tasks[task_idx].copy()
+
+        ev_spawn_locations = self._ev_handler.reset(task['ego_vehicles'])
+        self._sa_handler.reset(task['scenario_actors'], self._ev_handler.ego_vehicles)
+        self._zw_handler.reset(task['num_zombie_walkers'], ev_spawn_locations)
+        self._zv_handler.reset(task['num_zombie_vehicles'], ev_spawn_locations)
+        self._om_handler.reset(self._ev_handler.ego_vehicles)
+
+        self._world.tick()
+
+        snap_shot = self._world.get_snapshot()
+        self._timestamp = {
+            'step': 0,
+            'frame': snap_shot.timestamp.frame,
+            'relative_wall_time': 0.0,
+            'wall_time': snap_shot.timestamp.platform_timestamp,
+            'relative_simulation_time': 0.0,
+            'simulation_time': snap_shot.timestamp.elapsed_seconds,
+            'start_frame': snap_shot.timestamp.frame,
+            'start_wall_time': snap_shot.timestamp.platform_timestamp,
+            'start_simulation_time': snap_shot.timestamp.elapsed_seconds
+        }
+        timestamp = self._timestamp.copy()
+        _, _, _ = self._ev_handler.tick(timestamp)
+        obs_dict = self._om_handler.get_observation(timestamp)
+        return obs_dict
 
 main()
