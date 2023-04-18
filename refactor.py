@@ -6,25 +6,23 @@ import PIL.Image
 from utils import display_utils
 
 import logging
-import gym
 import numpy as np
 import carla
 
-
-from carla_gym import CARLA_GYM_ROOT_DIR
-from carla_gym.utils import config_utils
-import json
 from carla_gym.core.zombie_walker.zombie_walker_handler import ZombieWalkerHandler
 from carla_gym.core.zombie_vehicle.zombie_vehicle_handler import ZombieVehicleHandler
 from carla_gym.core.obs_manager.obs_manager_handler import ObsManagerHandler
 from carla_gym.core.task_actor.ego_vehicle.ego_vehicle_handler import EgoVehicleHandler
 from carla_gym.core.task_actor.scenario_actor.scenario_actor_handler import ScenarioActorHandler
 from carla_gym.utils.traffic_light import TrafficLightHandler
-from carla_gym.utils.dynamic_weather import WeatherHandler
 from stable_baselines3.common.utils import set_random_seed
 from mile.constants import CARLA_FPS
+from utils.profiling_utils import profile
 
 logger = logging.getLogger(__name__)
+
+
+NUM_AGENTS = 2
 
 
 def set_no_rendering_mode(world, no_rendering):
@@ -43,72 +41,22 @@ def set_sync_mode(world, tm, sync):
 
 
 
-# def build_all_tasks(carla_map):
-#     assert carla_map in ['Town01', 'Town02', 'Town03', 'Town04', 'Town05', 'Town06']
-#     num_zombie_vehicles = {
-#         'Town01': 120,
-#         'Town02': 70,
-#         'Town03': 70,
-#         'Town04': 150,
-#         'Town05': 120,
-#         'Town06': 120
-#     }[carla_map]
-#     num_zombie_walkers = {
-#         'Town01': 120,
-#         'Town02': 70,
-#         'Town03': 70,
-#         'Town04': 80,
-#         'Town05': 120,
-#         'Town06': 80
-#     }[carla_map]
-#
-# #     num_zombie_vehicles = 0
-# #     num_zombie_walkers = 0
-#
-#     weather = 'ClearNoon'
-#     description_folder = CARLA_GYM_ROOT_DIR / 'envs/scenario_descriptions/LeaderBoard' / carla_map
-#
-#     actor_configs_dict = json.load(open(description_folder / 'actors.json'))
-#     route_descriptions_dict = config_utils.parse_routes_file(description_folder / 'routes.xml')
-#
-#     all_tasks = []
-#     for route_id, route_description in route_descriptions_dict.items():
-#         task = {
-#             'weather': weather,
-#             'description_folder': description_folder,
-#             'route_id': route_id,
-#             'num_zombie_vehicles': num_zombie_vehicles,
-#             'num_zombie_walkers': num_zombie_walkers,
-#             'ego_vehicles': {
-#                 'routes': route_description['ego_vehicles'],
-#                 'actors': actor_configs_dict['ego_vehicles'],
-#             },
-#             'scenario_actors': {
-#                 'routes': route_description['scenario_actors'],
-#                 'actors': actor_configs_dict['scenario_actors']
-#             } if 'scenario_actors' in actor_configs_dict else {}
-#         }
-#         all_tasks.append(task)
-#
-#     return all_tasks
-
-
 def build_all_tasks(num_zombie_vehicles, num_zombie_walkers):
     weather = 'ClearNoon'
 
     actor_configs_dict = {
         'ego_vehicles': {
-            'hero': {'model': 'vehicle.lincoln.mkz_2017'}
+            'hero%d' %i : {'model': 'vehicle.lincoln.mkz_2017'} for i in range(NUM_AGENTS)
         }
     }
     route_descriptions_dict = {
         'ego_vehicles': {
-            'hero': []
+            'hero%d' %i : [] for i in range(NUM_AGENTS)
         }
     }
     endless_dict = {
         'ego_vehicles': {
-            'hero': True
+            'hero%d' %i : True for i in range(NUM_AGENTS)
         }
     }
     all_tasks = []
@@ -167,26 +115,30 @@ class CarlaServerManager:
         time.sleep(self._t_sleep)
 
 
-obs_configs = {
-    'hero': {
+
+single_obs_configs = {
         #         'speed': {'module': 'actor_state.speed'}, 'gnss': {'module': 'navigation.gnss'},
         #                      'location': [-1.5, 0.0, 2.0], 'rotation': [0.0, 0.0, 0.0]},
         #         'route_plan': {'module': 'navigation.waypoint_plan', 'steps': 20},
         'birdview': {
             'module': 'birdview.chauffeurnet', 'width_in_pixels': 192*2,
             'pixels_ev_to_bottom': 32, 'pixels_per_meter': 5.0,
-            'history_idx': [-16, -11, -6, -1], 'scale_bbox': True, 'scale_mask_col': 1.0}},
-    #     'hero': {}
+            'history_idx': [-16, -11, -6, -1], 'scale_bbox': True, 'scale_mask_col': 1.0}
 }
 
-reward_configs = {'hero': {'entry_point': 'reward.valeo_action:ValeoAction'}}
-terminal_configs = {'hero': {'entry_point': 'terminal.leaderboard:Leaderboard'}}
+
+obs_configs = {
+    'hero%d' % i : single_obs_configs for i in range(NUM_AGENTS)
+}
+
+reward_configs = {'hero%d' % i: {'entry_point': 'reward.valeo_action:ValeoAction'} for i in range(NUM_AGENTS)}
+terminal_configs = {'hero%d' % i: {'entry_point': 'terminal.leaderboard:Leaderboard'} for i in range(NUM_AGENTS)}
 env_configs = {'carla_map': 'Town01', 'routes_group': None, 'weather_group': 'new'}
 
 
 def main():
     # tasks = build_all_tasks(env_configs['carla_map'])
-    tasks = build_all_tasks(100, 100)
+    tasks = build_all_tasks(0, 100)
 
     server_manager = CarlaServerManager(
         '/home/carla/CarlaUE4.sh', port=2000, fps=10, display=False, t_sleep=10
@@ -205,40 +157,42 @@ def main():
         terminal_configs=terminal_configs,
         all_tasks=tasks
     )
-    actor_id = 'hero'
+    actor_id = 'hero0'
 
     obs = env.reset(0)
-    debug_frames = []
+    debug_frames = [[] for i in range(NUM_AGENTS)]
     timestamps = []
     print('starting the loop')
-    for counter in range(200):
-        raw_input = obs[actor_id]
-        if counter % 50 == 0:
-            print(counter)
-            settings = env._world.get_settings()
-            print(settings.no_rendering_mode)
-            print(raw_input.keys())
+    with profile(enable=False):
+        for counter in range(200):
+            if counter % 50 == 0:
+                print(counter)
+                print(obs.keys())
 
-        #         front_rgb = raw_input['central_rgb']['data']
-        bev_rgb = raw_input['birdview']['rendered']
+            for agent_i in range(NUM_AGENTS):
 
-        #         img = overlay_images(downsample(front_rgb, 0.6), bev_rgb, (20, 20))
-        if bev_rgb is not None:
-            debug_frames.append(bev_rgb)
+                raw_input = obs[f"hero{agent_i}"]
+                #         front_rgb = raw_input['central_rgb']['data']
+                bev_rgb = raw_input['birdview']['rendered']
 
-        control_dict = {
-            actor_id: carla.VehicleControl(throttle=0.8, steer=0, brake=0.)
-        }
-        # get observations
-        obs = env.step(control_dict)
+                #         img = overlay_images(downsample(front_rgb, 0.6), bev_rgb, (20, 20))
+                if bev_rgb is not None:
+                    debug_frames[agent_i].append(bev_rgb)
 
-        timestamps.append(time.time())
+            control_dict = {
+                'hero%d' % i: carla.VehicleControl(throttle=0.8, steer=0, brake=0.) for i in range(NUM_AGENTS)
+            }
+            # get observations
+            obs = env.step(control_dict)
+
+            timestamps.append(time.time())
 
     dt = np.median(np.diff(timestamps))
     print(f"dt={dt:.2f}, FPS={1. / dt:.1f}")
-    print(len(debug_frames))
-    if len(debug_frames):
-        display_utils.make_video_in_temp(debug_frames)
+    print(len(debug_frames[0]))
+    for frames in debug_frames:
+        if len(frames):
+            display_utils.make_video_in_temp(frames)
 
     # env.close()
     # server_manager.stop()
@@ -273,21 +227,21 @@ class CarlaMultiAgentEnv:
         TrafficLightHandler.reset(self._world)
 
         # define observation spaces exposed to agent
-        self._om_handler = ObsManagerHandler(obs_configs)
+        self._observation_handler = ObsManagerHandler(obs_configs)
         # this contains all info related to reward, traffic lights violations etc
-        self._ev_handler = EgoVehicleHandler(self._client, reward_configs, terminal_configs)
+        self._ego_vehicle_handler = EgoVehicleHandler(self._client, reward_configs, terminal_configs)
         self._zw_handler = ZombieWalkerHandler(self._client)
         self._zv_handler = ZombieVehicleHandler(self._client, tm_port=self._tm.get_port())
-        self._sa_handler = ScenarioActorHandler(self._client)
+        self._scenario_actor_handler = ScenarioActorHandler(self._client)
 
     def reset(self, task_idx):
         task = self._all_tasks[task_idx].copy()
 
-        ev_spawn_locations = self._ev_handler.reset(task['ego_vehicles'])
-        self._sa_handler.reset(task['scenario_actors'], self._ev_handler.ego_vehicles)
+        ev_spawn_locations = self._ego_vehicle_handler.reset(task['ego_vehicles'])
+        self._scenario_actor_handler.reset(task['scenario_actors'], self._ego_vehicle_handler.ego_vehicles)
         self._zw_handler.reset(task['num_zombie_walkers'], ev_spawn_locations)
         self._zv_handler.reset(task['num_zombie_vehicles'], ev_spawn_locations)
-        self._om_handler.reset(self._ev_handler.ego_vehicles)
+        self._observation_handler.reset(self._ego_vehicle_handler.ego_vehicles)
 
         self._world.tick()
 
@@ -304,13 +258,13 @@ class CarlaMultiAgentEnv:
             'start_simulation_time': snap_shot.timestamp.elapsed_seconds
         }
         timestamp = self._timestamp.copy()
-        _, _, _ = self._ev_handler.tick(timestamp)
-        obs_dict = self._om_handler.get_observation(timestamp)
+        _, _, _ = self._ego_vehicle_handler.tick(timestamp)
+        obs_dict = self._observation_handler.get_observation(timestamp)
         return obs_dict
 
     def step(self, control_dict):
-        self._ev_handler.apply_control(control_dict)
-        self._sa_handler.tick()
+        self._ego_vehicle_handler.apply_control(control_dict)
+        self._scenario_actor_handler.tick()
         # tick world
         self._world.tick()
 
@@ -324,7 +278,7 @@ class CarlaMultiAgentEnv:
         self._timestamp['relative_simulation_time'] = self._timestamp['simulation_time'] \
             - self._timestamp['start_simulation_time']
 
-        return self._om_handler.get_observation(self.timestamp)
+        return self._observation_handler.get_observation(self.timestamp)
 
     @property
     def timestamp(self):
