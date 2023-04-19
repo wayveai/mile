@@ -5,18 +5,17 @@ import PIL
 import PIL.Image
 from utils import display_utils
 from carla_gym.core.task_actor.common.task_vehicle import TaskVehicle
-from importlib import import_module
 
 import logging
 import numpy as np
 import carla
 
 from carla_gym.core.zombie_walker.zombie_walker_handler import ZombieWalkerHandler
-from carla_gym.core.obs_manager.obs_manager_handler import ObsManagerHandler
 from carla_gym.utils.traffic_light import TrafficLightHandler
 from stable_baselines3.common.utils import set_random_seed
 from mile.constants import CARLA_FPS
 from utils.profiling_utils import profile
+from vector_input_obs_manager import VectorizedInputManager
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +62,35 @@ def _get_spawn_points(c_map):
     return spawn_transforms
 
 
+
+def reset_ego_vehicles(actor_config, world):
+    world_map = world.get_map()
+    spawn_transforms = _get_spawn_points(world_map)
+
+    ev_spawn_locations = []
+    ego_vehicles = {}
+    for ev_id in actor_config:
+        bp_filter = actor_config[ev_id]['model']
+        blueprint = np.random.choice(world.get_blueprint_library().filter(bp_filter))
+        blueprint.set_attribute('role_name', ev_id)
+
+        spawn_transform = np.random.choice([x[1] for x in spawn_transforms])
+
+        wp = world_map.get_waypoint(spawn_transform.location)
+        spawn_transform.location.z = wp.transform.location.z + 1.321
+
+        carla_vehicle = world.try_spawn_actor(blueprint, spawn_transform)
+        world.tick()
+
+        target_transforms = []
+        ego_vehicles[ev_id] = TaskVehicle(carla_vehicle, target_transforms, spawn_transforms, endless=True)
+
+        ev_spawn_locations.append(carla_vehicle.get_location())
+
+    return ego_vehicles, ev_spawn_locations
+
+
+
 def kill_carla(port=2005):
     # This one only kills processes linked to a certain port
     kill_process = subprocess.Popen(f'fuser -k {port}/tcp', shell=True)
@@ -101,13 +129,17 @@ class CarlaServerManager:
 
 
 single_obs_configs = {
-        #         'speed': {'module': 'actor_state.speed'}, 'gnss': {'module': 'navigation.gnss'},
-        #                      'location': [-1.5, 0.0, 2.0], 'rotation': [0.0, 0.0, 0.0]},
-        #         'route_plan': {'module': 'navigation.waypoint_plan', 'steps': 20},
-        'birdview': {
-            'module': 'birdview.chauffeurnet', 'width_in_pixels': 192*2,
-            'pixels_ev_to_bottom': 32, 'pixels_per_meter': 5.0,
-            'history_idx': [-16, -11, -6, -1], 'scale_bbox': True, 'scale_mask_col': 1.0}
+    #         'speed': {'module': 'actor_state.speed'}, 'gnss': {'module': 'navigation.gnss'},
+    #                      'location': [-1.5, 0.0, 2.0], 'rotation': [0.0, 0.0, 0.0]},
+    #         'route_plan': {'module': 'navigation.waypoint_plan', 'steps': 20},
+    # 'birdview': {
+    #     'module': 'birdview.chauffeurnet', 'width_in_pixels': 192*2,
+    #     'pixels_ev_to_bottom': 32, 'pixels_per_meter': 5.0,
+    #     'history_idx': [-16, -11, -6, -1], 'scale_bbox': True, 'scale_mask_col': 1.0},
+    'vectorized': {
+        'module': 'vectorized', 'width_in_pixels': 192 * 2,
+        'pixels_ev_to_bottom': 32, 'pixels_per_meter': 5.0,
+        'history_idx': [-16, -11, -6, -1], 'scale_bbox': True, 'scale_mask_col': 1.0}
 }
 
 
@@ -145,7 +177,7 @@ def main():
 
                 raw_input = obs[f"hero{agent_i}"]
                 #         front_rgb = raw_input['central_rgb']['data']
-                bev_rgb = raw_input['birdview']['rendered']
+                bev_rgb = raw_input['vectorized']['rendered']
 
                 #         img = overlay_images(downsample(front_rgb, 0.6), bev_rgb, (20, 20))
                 if bev_rgb is not None:
@@ -193,7 +225,12 @@ class CarlaMultiAgentEnv:
         TrafficLightHandler.reset(self._world)
         self._zw_handler = ZombieWalkerHandler(self._client)
 
-        self._observation_handler = ObsManagerHandler(obs_configs)
+        self._obs_managers = {}
+        for ev_id, ev_obs_configs in obs_configs.items():
+            self._obs_managers[ev_id] = {}
+            for obs_id, obs_config in ev_obs_configs.items():
+                self._obs_managers[ev_id][obs_id] = VectorizedInputManager(obs_config)
+
         self._timestamp = None
 
         self.ego_vehicles = {}
@@ -201,33 +238,25 @@ class CarlaMultiAgentEnv:
 
     def reset(self):
         num_zombie_walkers = 120
-        ego_vehicles_config =  {
-            'routes': {'hero%d' %i : [] for i in range(NUM_AGENTS)},
-            'actors': {'hero%d' %i : {'model': 'vehicle.lincoln.mkz_2017'} for i in range(NUM_AGENTS)},
-            'endless': {'hero%d' %i : True for i in range(NUM_AGENTS)}
-        }
-
-        self.ego_vehicles, ev_spawn_locations = reset_ego_vehicles(ego_vehicles_config, self._world)
+        actor_config =  {'hero%d' %i : {'model': 'vehicle.lincoln.mkz_2017'} for i in range(NUM_AGENTS)}
+        self.ego_vehicles, ev_spawn_locations = reset_ego_vehicles(actor_config, self._world)
         self._zw_handler.reset(num_zombie_walkers, ev_spawn_locations)
 
-        self._observation_handler.reset(self.ego_vehicles)
+        for ev_id, ev_actor in self.ego_vehicles.items():
+            for obs_id, om in self._obs_managers[ev_id].items():
+                om.attach_ego_vehicle(ev_actor)
 
         self._world.tick()
 
-        snap_shot = self._world.get_snapshot()
-        self._timestamp = {
-            'step': 0,
-            'frame': snap_shot.timestamp.frame,
-            'relative_wall_time': 0.0,
-            'wall_time': snap_shot.timestamp.platform_timestamp,
-            'relative_simulation_time': 0.0,
-            'simulation_time': snap_shot.timestamp.elapsed_seconds,
-            'start_frame': snap_shot.timestamp.frame,
-            'start_wall_time': snap_shot.timestamp.platform_timestamp,
-            'start_simulation_time': snap_shot.timestamp.elapsed_seconds
-        }
-        timestamp = self._timestamp.copy()
-        obs_dict = self._observation_handler.get_observation(timestamp)
+        obs_dict = self.get_observation()
+        return obs_dict
+
+    def get_observation(self):
+        obs_dict = {}
+        for ev_id, om_dict in self._obs_managers.items():
+            obs_dict[ev_id] = {}
+            for obs_id, om in om_dict.items():
+                obs_dict[ev_id][obs_id] = om.get_observation()
         return obs_dict
 
     def step(self, control_dict):
@@ -235,53 +264,6 @@ class CarlaMultiAgentEnv:
             self.ego_vehicles[ev_id].vehicle.apply_control(control)
 
         self._world.tick()
-
-        # update timestamp
-        snap_shot = self._world.get_snapshot()
-        self._timestamp['step'] = snap_shot.timestamp.frame-self._timestamp['start_frame']
-        self._timestamp['frame'] = snap_shot.timestamp.frame
-        self._timestamp['wall_time'] = snap_shot.timestamp.platform_timestamp
-        self._timestamp['relative_wall_time'] = self._timestamp['wall_time'] - self._timestamp['start_wall_time']
-        self._timestamp['simulation_time'] = snap_shot.timestamp.elapsed_seconds
-        self._timestamp['relative_simulation_time'] = self._timestamp['simulation_time'] \
-            - self._timestamp['start_simulation_time']
-
-        return self._observation_handler.get_observation(self.timestamp)
-
-    @property
-    def timestamp(self):
-        return self._timestamp.copy()
-
-
-def reset_ego_vehicles(task_config, world):
-    world_map = world.get_map()
-    actor_config = task_config['actors']
-    route_config = task_config['routes']
-
-    spawn_transforms = _get_spawn_points(world_map)
-
-    ev_spawn_locations = []
-    ego_vehicles = {}
-    for ev_id in actor_config:
-        bp_filter = actor_config[ev_id]['model']
-        blueprint = np.random.choice(world.get_blueprint_library().filter(bp_filter))
-        blueprint.set_attribute('role_name', ev_id)
-
-        spawn_transform = np.random.choice([x[1] for x in spawn_transforms])
-
-        wp = world_map.get_waypoint(spawn_transform.location)
-        spawn_transform.location.z = wp.transform.location.z + 1.321
-
-        carla_vehicle = world.try_spawn_actor(blueprint, spawn_transform)
-        world.tick()
-
-        endless = True
-        target_transforms = route_config[ev_id][1:]
-        ego_vehicles[ev_id] = TaskVehicle(carla_vehicle, target_transforms, spawn_transforms, endless)
-
-        ev_spawn_locations.append(carla_vehicle.get_location())
-
-    return ego_vehicles, ev_spawn_locations
-
+        return self.get_observation()
 
 main()
