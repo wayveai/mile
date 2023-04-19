@@ -4,7 +4,6 @@ import time
 import PIL
 import PIL.Image
 from utils import display_utils
-from carla_gym.core.task_actor.common.task_vehicle import TaskVehicle
 
 import logging
 import numpy as np
@@ -12,15 +11,16 @@ import carla
 
 from carla_gym.core.zombie_walker.zombie_walker_handler import ZombieWalkerHandler
 from carla_gym.utils.traffic_light import TrafficLightHandler
+
 from stable_baselines3.common.utils import set_random_seed
-from mile.constants import CARLA_FPS
 from utils.profiling_utils import profile
-from vector_input_obs_manager import VectorizedInputManager
+from vector_input_obs_manager import VectorizedInputManager, MyTaskVehicle
 
 logger = logging.getLogger(__name__)
 
 
 NUM_AGENTS = 4
+FPS = 10
 
 
 def set_no_rendering_mode(world, no_rendering):
@@ -32,7 +32,7 @@ def set_no_rendering_mode(world, no_rendering):
 def set_sync_mode(world, tm, sync):
     settings = world.get_settings()
     settings.synchronous_mode = sync
-    settings.fixed_delta_seconds = 1.0 / CARLA_FPS
+    settings.fixed_delta_seconds = 1.0 / FPS
     settings.deterministic_ragdolls = True
     world.apply_settings(settings)
     tm.set_synchronous_mode(sync)
@@ -83,7 +83,7 @@ def reset_ego_vehicles(actor_config, world):
         world.tick()
 
         target_transforms = []
-        ego_vehicles[ev_id] = TaskVehicle(carla_vehicle, target_transforms, spawn_transforms, endless=True)
+        ego_vehicles[ev_id] = MyTaskVehicle(carla_vehicle, target_transforms, spawn_transforms, endless=True)
 
         ev_spawn_locations.append(carla_vehicle.get_location())
 
