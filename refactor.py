@@ -4,16 +4,15 @@ import time
 import PIL
 import PIL.Image
 from utils import display_utils
+from carla_gym.core.task_actor.common.task_vehicle import TaskVehicle
+from importlib import import_module
 
 import logging
 import numpy as np
 import carla
 
 from carla_gym.core.zombie_walker.zombie_walker_handler import ZombieWalkerHandler
-from carla_gym.core.zombie_vehicle.zombie_vehicle_handler import ZombieVehicleHandler
 from carla_gym.core.obs_manager.obs_manager_handler import ObsManagerHandler
-from carla_gym.core.task_actor.ego_vehicle.ego_vehicle_handler import EgoVehicleHandler
-from carla_gym.core.task_actor.scenario_actor.scenario_actor_handler import ScenarioActorHandler
 from carla_gym.utils.traffic_light import TrafficLightHandler
 from stable_baselines3.common.utils import set_random_seed
 from mile.constants import CARLA_FPS
@@ -22,7 +21,7 @@ from utils.profiling_utils import profile
 logger = logging.getLogger(__name__)
 
 
-NUM_AGENTS = 2
+NUM_AGENTS = 4
 
 
 def set_no_rendering_mode(world, no_rendering):
@@ -40,43 +39,28 @@ def set_sync_mode(world, tm, sync):
     tm.set_synchronous_mode(sync)
 
 
+def _get_spawn_points(c_map):
+    all_spawn_points = c_map.get_spawn_points()
 
-def build_all_tasks(num_zombie_vehicles, num_zombie_walkers):
-    weather = 'ClearNoon'
+    spawn_transforms = []
+    for trans in all_spawn_points:
+        wp = c_map.get_waypoint(trans.location)
 
-    actor_configs_dict = {
-        'ego_vehicles': {
-            'hero%d' %i : {'model': 'vehicle.lincoln.mkz_2017'} for i in range(NUM_AGENTS)
-        }
-    }
-    route_descriptions_dict = {
-        'ego_vehicles': {
-            'hero%d' %i : [] for i in range(NUM_AGENTS)
-        }
-    }
-    endless_dict = {
-        'ego_vehicles': {
-            'hero%d' %i : True for i in range(NUM_AGENTS)
-        }
-    }
-    all_tasks = []
-    task = {
-        'weather': weather,
-        'description_folder': 'None',
-        'route_id': 0,
-        'num_zombie_vehicles': num_zombie_vehicles,
-        'num_zombie_walkers': num_zombie_walkers,
-        'ego_vehicles': {
-            'routes': route_descriptions_dict['ego_vehicles'],
-            'actors': actor_configs_dict['ego_vehicles'],
-            'endless': endless_dict['ego_vehicles']
-        },
-        'scenario_actors': {},
-    }
-    all_tasks.append(task)
+        if wp.is_junction:
+            wp_prev = wp
+            while wp_prev.is_junction:
+                wp_prev = wp_prev.previous(1.0)[0]
+            spawn_transforms.append([wp_prev.road_id, wp_prev.transform])
+            if c_map.name == 'Town03' and (wp_prev.road_id == 44):
+                for _ in range(100):
+                    spawn_transforms.append([wp_prev.road_id, wp_prev.transform])
+        else:
+            spawn_transforms.append([wp.road_id, wp.transform])
+            if c_map.name == 'Town03' and (wp.road_id == 44):
+                for _ in range(100):
+                    spawn_transforms.append([wp.road_id, wp.transform])
 
-    return all_tasks
-
+    return spawn_transforms
 
 
 def kill_carla(port=2005):
@@ -131,35 +115,23 @@ obs_configs = {
     'hero%d' % i : single_obs_configs for i in range(NUM_AGENTS)
 }
 
-reward_configs = {'hero%d' % i: {'entry_point': 'reward.valeo_action:ValeoAction'} for i in range(NUM_AGENTS)}
-terminal_configs = {'hero%d' % i: {'entry_point': 'terminal.leaderboard:Leaderboard'} for i in range(NUM_AGENTS)}
-env_configs = {'carla_map': 'Town01', 'routes_group': None, 'weather_group': 'new'}
-
-
 def main():
-    # tasks = build_all_tasks(env_configs['carla_map'])
-    tasks = build_all_tasks(0, 100)
-
     server_manager = CarlaServerManager(
         '/home/carla/CarlaUE4.sh', port=2000, fps=10, display=False, t_sleep=10
     )
     server_manager.start()
 
-    print('Crating environment')
+    print('Creating environment')
     env = CarlaMultiAgentEnv(
-        carla_map=env_configs['carla_map'],
+        carla_map='Town01',
         host='localhost',
         port=2000,
         seed=2021,
         no_rendering=True,
         obs_configs=obs_configs,
-        reward_configs=reward_configs,
-        terminal_configs=terminal_configs,
-        all_tasks=tasks
     )
-    actor_id = 'hero0'
 
-    obs = env.reset(0)
+    obs = env.reset()
     debug_frames = [[] for i in range(NUM_AGENTS)]
     timestamps = []
     print('starting the loop')
@@ -194,14 +166,10 @@ def main():
         if len(frames):
             display_utils.make_video_in_temp(frames)
 
-    # env.close()
-    # server_manager.stop()
-
 
 class CarlaMultiAgentEnv:
     def __init__(self, carla_map, host, port, seed, no_rendering,
-                 obs_configs, reward_configs, terminal_configs, all_tasks):
-        self._all_tasks = all_tasks
+                 obs_configs):
 
         client = carla.Client(host, port)
         client.set_timeout(10.0)
@@ -222,26 +190,27 @@ class CarlaMultiAgentEnv:
         self._tm.set_random_device_seed(seed)
 
         self._world.tick()
-
-        # register traffic lights
         TrafficLightHandler.reset(self._world)
-
-        # define observation spaces exposed to agent
-        self._observation_handler = ObsManagerHandler(obs_configs)
-        # this contains all info related to reward, traffic lights violations etc
-        self._ego_vehicle_handler = EgoVehicleHandler(self._client, reward_configs, terminal_configs)
         self._zw_handler = ZombieWalkerHandler(self._client)
-        self._zv_handler = ZombieVehicleHandler(self._client, tm_port=self._tm.get_port())
-        self._scenario_actor_handler = ScenarioActorHandler(self._client)
 
-    def reset(self, task_idx):
-        task = self._all_tasks[task_idx].copy()
+        self._observation_handler = ObsManagerHandler(obs_configs)
+        self._timestamp = None
 
-        ev_spawn_locations = self._ego_vehicle_handler.reset(task['ego_vehicles'])
-        self._scenario_actor_handler.reset(task['scenario_actors'], self._ego_vehicle_handler.ego_vehicles)
-        self._zw_handler.reset(task['num_zombie_walkers'], ev_spawn_locations)
-        self._zv_handler.reset(task['num_zombie_vehicles'], ev_spawn_locations)
-        self._observation_handler.reset(self._ego_vehicle_handler.ego_vehicles)
+        self.ego_vehicles = {}
+        self._world = client.get_world()
+
+    def reset(self):
+        num_zombie_walkers = 120
+        ego_vehicles_config =  {
+            'routes': {'hero%d' %i : [] for i in range(NUM_AGENTS)},
+            'actors': {'hero%d' %i : {'model': 'vehicle.lincoln.mkz_2017'} for i in range(NUM_AGENTS)},
+            'endless': {'hero%d' %i : True for i in range(NUM_AGENTS)}
+        }
+
+        self.ego_vehicles, ev_spawn_locations = reset_ego_vehicles(ego_vehicles_config, self._world)
+        self._zw_handler.reset(num_zombie_walkers, ev_spawn_locations)
+
+        self._observation_handler.reset(self.ego_vehicles)
 
         self._world.tick()
 
@@ -258,14 +227,13 @@ class CarlaMultiAgentEnv:
             'start_simulation_time': snap_shot.timestamp.elapsed_seconds
         }
         timestamp = self._timestamp.copy()
-        _, _, _ = self._ego_vehicle_handler.tick(timestamp)
         obs_dict = self._observation_handler.get_observation(timestamp)
         return obs_dict
 
     def step(self, control_dict):
-        self._ego_vehicle_handler.apply_control(control_dict)
-        self._scenario_actor_handler.tick()
-        # tick world
+        for ev_id, control in control_dict.items():
+            self.ego_vehicles[ev_id].vehicle.apply_control(control)
+
         self._world.tick()
 
         # update timestamp
@@ -283,5 +251,37 @@ class CarlaMultiAgentEnv:
     @property
     def timestamp(self):
         return self._timestamp.copy()
+
+
+def reset_ego_vehicles(task_config, world):
+    world_map = world.get_map()
+    actor_config = task_config['actors']
+    route_config = task_config['routes']
+
+    spawn_transforms = _get_spawn_points(world_map)
+
+    ev_spawn_locations = []
+    ego_vehicles = {}
+    for ev_id in actor_config:
+        bp_filter = actor_config[ev_id]['model']
+        blueprint = np.random.choice(world.get_blueprint_library().filter(bp_filter))
+        blueprint.set_attribute('role_name', ev_id)
+
+        spawn_transform = np.random.choice([x[1] for x in spawn_transforms])
+
+        wp = world_map.get_waypoint(spawn_transform.location)
+        spawn_transform.location.z = wp.transform.location.z + 1.321
+
+        carla_vehicle = world.try_spawn_actor(blueprint, spawn_transform)
+        world.tick()
+
+        endless = True
+        target_transforms = route_config[ev_id][1:]
+        ego_vehicles[ev_id] = TaskVehicle(carla_vehicle, target_transforms, spawn_transforms, endless)
+
+        ev_spawn_locations.append(carla_vehicle.get_location())
+
+    return ego_vehicles, ev_spawn_locations
+
 
 main()
