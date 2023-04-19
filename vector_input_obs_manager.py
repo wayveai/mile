@@ -386,19 +386,12 @@ class VectorizedInputManager:
         vehicle_masks, walker_masks, tl_green_masks, tl_yellow_masks, tl_red_masks, stop_masks \
             = self._get_history_masks(M_warp)
 
-        # road_mask, lane_mask
-        road_mask = cv.warpAffine(self._road, M_warp, (self._width, self._width)).astype(np.bool)
-        lane_mask_all = cv.warpAffine(self._lane_marking_all, M_warp, (self._width, self._width)).astype(np.bool)
-        lane_mask_broken = cv.warpAffine(self._lane_marking_white_broken, M_warp,
-                                         (self._width, self._width)).astype(np.bool)
+        road_mask, lane_mask_all, lane_mask_broken = make_lane_masks(
+            M_warp, self._road, self._width, self._lane_marking_all, self._lane_marking_white_broken)
 
         # route_mask
-        route_mask = np.zeros([self._width, self._width], dtype=np.uint8)
-        route_in_pixel = np.array([[_world_to_pixel(wp.transform.location, self._pixels_per_meter, self._world_offset)]
-                                   for wp, _ in self._parent_actor.route_plan[0:80]])
-        route_warped = cv.transform(route_in_pixel, M_warp)
-        cv.polylines(route_mask, [np.round(route_warped).astype(np.int32)], False, 1, thickness=16)
-        route_mask = route_mask.astype(np.bool)
+        route_mask = make_route_mask(
+            M_warp, self._parent_actor.route_plan, self._width, self._pixels_per_meter, self._world_offset)
 
         # ev_mask
         ev_mask = _get_mask_from_actor_list(
@@ -532,3 +525,22 @@ class VectorizedInputManager:
         image[ev_mask] = COLOR_WHITE
         # image[obstacle_mask] = COLOR_BLUE
         return image
+
+
+def make_route_mask(M_warp, route_plan, width, pixels_per_meter, world_offset):
+    route_mask = np.zeros([width, width], dtype=np.uint8)
+    route_in_pixel = np.array([[_world_to_pixel(wp.transform.location, pixels_per_meter, world_offset)]
+                               for wp, _ in route_plan[0:80]])
+    route_warped = cv.transform(route_in_pixel, M_warp)
+    cv.polylines(route_mask, [np.round(route_warped).astype(np.int32)], False, 1, thickness=16)
+    route_mask = route_mask.astype(np.bool)
+    return route_mask
+
+
+def make_lane_masks(M_warp, road, width, lane_marking_all, lane_marking_white_broken):
+    # road_mask, lane_mask
+    road_mask = cv.warpAffine(road, M_warp, (width, width)).astype(np.bool)
+    lane_mask_all = cv.warpAffine(lane_marking_all, M_warp, (width, width)).astype(np.bool)
+    lane_mask_broken = cv.warpAffine(lane_marking_white_broken, M_warp,
+                                     (width, width)).astype(np.bool)
+    return road_mask, lane_mask_all, lane_mask_broken
