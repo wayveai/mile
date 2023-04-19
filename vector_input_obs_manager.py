@@ -34,9 +34,7 @@ def _world_to_pixel(location, pixels_per_meter, world_offset):
     return np.array([x, y], dtype=np.float32)
 
 
-def _get_mask_from_actor_list(actor_list, M_warp, obs_config, world_offset):
-    width = int(obs_config['width_in_pixels'])
-    pixels_per_meter = obs_config['pixels_per_meter']
+def _get_mask_from_actor_list(actor_list, M_warp, width, pixels_per_meter, world_offset):
     mask = np.zeros([width, width], dtype=np.uint8)
     for actor_transform, bb_loc, bb_ext in actor_list:
 
@@ -52,6 +50,36 @@ def _get_mask_from_actor_list(actor_list, M_warp, obs_config, world_offset):
         corners_warped = cv.transform(corners_in_pixel, M_warp)
 
         cv.fillConvexPoly(mask, np.round(corners_warped).astype(np.int32), 1)
+    return mask.astype(np.bool)
+
+
+
+
+def make_route_mask(M_warp, route_plan, width, pixels_per_meter, world_offset):
+    route_mask = np.zeros([width, width], dtype=np.uint8)
+    route_in_pixel = np.array([[_world_to_pixel(wp.transform.location, pixels_per_meter, world_offset)]
+                               for wp, _ in route_plan[0:80]])
+    route_warped = cv.transform(route_in_pixel, M_warp)
+    cv.polylines(route_mask, [np.round(route_warped).astype(np.int32)], False, 1, thickness=16)
+    route_mask = route_mask.astype(np.bool)
+    return route_mask
+
+
+def make_lane_masks(M_warp, road, width, lane_marking_all, lane_marking_white_broken):
+    # road_mask, lane_mask
+    road_mask = cv.warpAffine(road, M_warp, (width, width)).astype(np.bool)
+    lane_mask_all = cv.warpAffine(lane_marking_all, M_warp, (width, width)).astype(np.bool)
+    lane_mask_broken = cv.warpAffine(lane_marking_white_broken, M_warp,
+                                     (width, width)).astype(np.bool)
+    return road_mask, lane_mask_all, lane_mask_broken
+
+def _get_mask_from_stopline_vtx(width, pixels_per_meter, world_offset, stopline_vtx, M_warp):
+    mask = np.zeros([width, width], dtype=np.uint8)
+    for sp_locs in stopline_vtx:
+        stopline_in_pixel = np.array([[_world_to_pixel(x, pixels_per_meter, world_offset)] for x in sp_locs])
+        stopline_warped = cv.transform(stopline_in_pixel, M_warp)
+        cv.line(mask, tuple(stopline_warped[0, 0]), tuple(stopline_warped[1, 0]),
+                color=1, thickness=6)
     return mask.astype(np.bool)
 
 
@@ -384,7 +412,8 @@ class VectorizedInputManager:
 
         # objects with history
         vehicle_masks, walker_masks, tl_green_masks, tl_yellow_masks, tl_red_masks, stop_masks \
-            = self._get_history_masks(M_warp)
+            = _get_history_masks(
+            M_warp, self._history_queue, self._history_idx, self._width, self._pixels_per_meter, self._world_offset)
 
         road_mask, lane_mask_all, lane_mask_broken = make_lane_masks(
             M_warp, self._road, self._width, self._lane_marking_all, self._lane_marking_white_broken)
@@ -395,7 +424,7 @@ class VectorizedInputManager:
 
         # ev_mask
         ev_mask = _get_mask_from_actor_list(
-            [(ev_transform, ev_bbox.location, ev_bbox.extent)], M_warp, self._obs_config, self._world_offset)
+            [(ev_transform, ev_bbox.location, ev_bbox.extent)], M_warp, self._width, self._pixels_per_meter, self._world_offset)
 
         # render
         image = self.image_render(road_mask, route_mask, lane_mask_all, lane_mask_broken,
@@ -410,32 +439,6 @@ class VectorizedInputManager:
         result = {'rendered': image, 'masks': masks}
 
         return result
-
-    def _get_history_masks(self, M_warp):
-        qsize = len(self._history_queue)
-        vehicle_masks, walker_masks, tl_green_masks, tl_yellow_masks, tl_red_masks, stop_masks = [], [], [], [], [], []
-        for idx in self._history_idx:
-            idx = max(idx, -1 * qsize)
-
-            vehicles, walkers, tl_green, tl_yellow, tl_red, stops = self._history_queue[idx]
-
-            vehicle_masks.append(_get_mask_from_actor_list(vehicles, M_warp, self._obs_config, self._world_offset))
-            walker_masks.append(_get_mask_from_actor_list(walkers, M_warp, self._obs_config, self._world_offset))
-            tl_green_masks.append(self._get_mask_from_stopline_vtx(tl_green, M_warp))
-            tl_yellow_masks.append(self._get_mask_from_stopline_vtx(tl_yellow, M_warp))
-            tl_red_masks.append(self._get_mask_from_stopline_vtx(tl_red, M_warp))
-            stop_masks.append(_get_mask_from_actor_list(stops, M_warp, self._obs_config, self._world_offset))
-
-        return vehicle_masks, walker_masks, tl_green_masks, tl_yellow_masks, tl_red_masks, stop_masks
-
-    def _get_mask_from_stopline_vtx(self, stopline_vtx, M_warp):
-        mask = np.zeros([self._width, self._width], dtype=np.uint8)
-        for sp_locs in stopline_vtx:
-            stopline_in_pixel = np.array([[_world_to_pixel(x, self._pixels_per_meter, self._world_offset)] for x in sp_locs])
-            stopline_warped = cv.transform(stopline_in_pixel, M_warp)
-            cv.line(mask, tuple(stopline_warped[0, 0]), tuple(stopline_warped[1, 0]),
-                    color=1, thickness=6)
-        return mask.astype(np.bool)
 
     @staticmethod
     def _get_surrounding_actors(bbox_list, criterium, scale=None):
@@ -526,21 +529,26 @@ class VectorizedInputManager:
         # image[obstacle_mask] = COLOR_BLUE
         return image
 
+def _get_history_masks(M_warp, history_queue, history_idx, width, pixels_per_meter, world_offset):
+    qsize = len(history_queue)
+    vehicle_masks, walker_masks, tl_green_masks, tl_yellow_masks, tl_red_masks, stop_masks = [], [], [], [], [], []
 
-def make_route_mask(M_warp, route_plan, width, pixels_per_meter, world_offset):
-    route_mask = np.zeros([width, width], dtype=np.uint8)
-    route_in_pixel = np.array([[_world_to_pixel(wp.transform.location, pixels_per_meter, world_offset)]
-                               for wp, _ in route_plan[0:80]])
-    route_warped = cv.transform(route_in_pixel, M_warp)
-    cv.polylines(route_mask, [np.round(route_warped).astype(np.int32)], False, 1, thickness=16)
-    route_mask = route_mask.astype(np.bool)
-    return route_mask
+    for idx in history_idx:
+        idx = max(idx, -1 * qsize)
 
+        vehicles, walkers, tl_green, tl_yellow, tl_red, stops = history_queue[idx]
 
-def make_lane_masks(M_warp, road, width, lane_marking_all, lane_marking_white_broken):
-    # road_mask, lane_mask
-    road_mask = cv.warpAffine(road, M_warp, (width, width)).astype(np.bool)
-    lane_mask_all = cv.warpAffine(lane_marking_all, M_warp, (width, width)).astype(np.bool)
-    lane_mask_broken = cv.warpAffine(lane_marking_white_broken, M_warp,
-                                     (width, width)).astype(np.bool)
-    return road_mask, lane_mask_all, lane_mask_broken
+        vehicle_masks.append(
+            _get_mask_from_actor_list(vehicles, M_warp, width, pixels_per_meter, world_offset))
+        walker_masks.append(
+            _get_mask_from_actor_list(walkers, M_warp, width, pixels_per_meter, world_offset))
+        tl_green_masks.append(
+            _get_mask_from_stopline_vtx(width, pixels_per_meter, world_offset, tl_green, M_warp))
+        tl_yellow_masks.append(
+            _get_mask_from_stopline_vtx(width, pixels_per_meter, world_offset, tl_yellow, M_warp))
+        tl_red_masks.append(
+            _get_mask_from_stopline_vtx(width, pixels_per_meter, world_offset, tl_red, M_warp))
+        stop_masks.append(
+            _get_mask_from_actor_list(stops, M_warp, width, pixels_per_meter, world_offset))
+
+    return vehicle_masks, walker_masks, tl_green_masks, tl_yellow_masks, tl_red_masks, stop_masks
