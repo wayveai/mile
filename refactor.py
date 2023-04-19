@@ -14,7 +14,7 @@ from carla_gym.core.zombie_walker.zombie_walker_handler import ZombieWalkerHandl
 from stable_baselines3.common.utils import set_random_seed
 from utils.profiling_utils import profile
 from vector_input_obs_manager import VectorizedInputManager, \
-    TrafficLightHandlerInstance, init_tl_instance, VehicleWrapper
+    TrafficLightHandlerInstance, VehicleWrapper
 
 logger = logging.getLogger(__name__)
 
@@ -128,17 +128,9 @@ class CarlaServerManager:
 
 
 single_obs_configs = {
-    #         'speed': {'module': 'actor_state.speed'}, 'gnss': {'module': 'navigation.gnss'},
-    #                      'location': [-1.5, 0.0, 2.0], 'rotation': [0.0, 0.0, 0.0]},
-    #         'route_plan': {'module': 'navigation.waypoint_plan', 'steps': 20},
-    # 'birdview': {
-    #     'module': 'birdview.chauffeurnet', 'width_in_pixels': 192*2,
-    #     'pixels_ev_to_bottom': 32, 'pixels_per_meter': 5.0,
-    #     'history_idx': [-16, -11, -6, -1], 'scale_bbox': True, 'scale_mask_col': 1.0},
-    'vectorized': {
-        'module': 'vectorized', 'width_in_pixels': 192 * 2,
-        'pixels_ev_to_bottom': 32, 'pixels_per_meter': 5.0,
-        'history_idx': [-16, -11, -6, -1], 'scale_bbox': True, 'scale_mask_col': 1.0}
+    'width_in_pixels': 192 * 2,
+    'pixels_ev_to_bottom': 32, 'pixels_per_meter': 5.0,
+    'history_idx': [-16, -11, -6, -1], 'scale_bbox': True, 'scale_mask_col': 1.0
 }
 
 
@@ -164,16 +156,16 @@ def main():
 
     obs = env.reset()
     timestamps = []
+    control_dict = {
+        # 'hero%d' % i: carla.VehicleControl(throttle=0.8, steer=0, brake=0.) for i in range(NUM_AGENTS)
+        'hero%d' % i: carla.VehicleControl(throttle=0.0, steer=0, brake=0.) for i in range(NUM_AGENTS)
+    }
     print('starting the loop')
-    with profile(enable=False):
+    with profile(enable=True):
         for counter in range(100):
             if counter % 50 == 0:
                 print(counter)
                 print(obs.keys())
-
-            control_dict = {
-                'hero%d' % i: carla.VehicleControl(throttle=0.8, steer=0, brake=0.) for i in range(NUM_AGENTS)
-            }
             # get observations
             obs = env.step(control_dict)
 
@@ -181,10 +173,11 @@ def main():
 
     dt = np.median(np.diff(timestamps))
     print(f"dt={dt:.2f}, FPS={1. / dt:.1f}")
+
     reconstructed_bevs = env.reconstruct_bev()
     debug_frames = []
     for i in range(NUM_AGENTS):
-        agent_bevs = reconstructed_bevs['hero%d' % i]['vectorized']
+        agent_bevs = reconstructed_bevs['hero%d' % i]
         debug_frames.append([el['rendered'] for el in agent_bevs])
 
     for frames in debug_frames:
@@ -215,14 +208,12 @@ class CarlaMultiAgentEnv:
         self._tm.set_random_device_seed(seed)
 
         self._world.tick()
-        self._traffic_light_handler = init_tl_instance(TrafficLightHandlerInstance(), self._world)
+        self._traffic_light_handler = TrafficLightHandlerInstance(self._world)
         self._zw_handler = ZombieWalkerHandler(self._client)
 
         self._obs_managers = {}
-        for ev_id, ev_obs_configs in obs_configs.items():
-            self._obs_managers[ev_id] = {}
-            for obs_id, obs_config in ev_obs_configs.items():
-                self._obs_managers[ev_id][obs_id] = VectorizedInputManager(obs_config)
+        for ev_id, obs_config in obs_configs.items():
+            self._obs_managers[ev_id] = VectorizedInputManager(obs_config)
 
         self._timestamp = None
 
@@ -230,14 +221,13 @@ class CarlaMultiAgentEnv:
         self._world = client.get_world()
 
     def reset(self):
-        num_zombie_walkers = 120
+        num_zombie_walkers = 0
         actor_config =  {'hero%d' %i : {'model': 'vehicle.lincoln.mkz_2017'} for i in range(NUM_AGENTS)}
         self.ego_vehicles, ev_spawn_locations = reset_ego_vehicles(actor_config, self._world)
         self._zw_handler.reset(num_zombie_walkers, ev_spawn_locations)
 
         for ev_id, ev_actor in self.ego_vehicles.items():
-            for obs_id, om in self._obs_managers[ev_id].items():
-                om.attach_ego_vehicle(ev_actor)
+            self._obs_managers[ev_id].attach_ego_vehicle(ev_actor)
 
         self._world.tick()
 
@@ -246,27 +236,27 @@ class CarlaMultiAgentEnv:
 
     def get_observation(self):
         obs_dict = {}
-        for ev_id, om_dict in self._obs_managers.items():
-            obs_dict[ev_id] = {}
-            for obs_id, om in om_dict.items():
-                obs_dict[ev_id][obs_id] = om.get_observation(self._traffic_light_handler)
+        for ev_id, om in self._obs_managers.items():
+            obs_dict[ev_id] = om.get_observation(self._traffic_light_handler)
         return obs_dict
 
     def step(self, control_dict):
+        self._apply_control(control_dict)
+        self._tick_world()
+        return self.get_observation()
+
+    def _apply_control(self, control_dict):
         for ev_id, control in control_dict.items():
             self.ego_vehicles[ev_id].vehicle.apply_control(control)
 
+    def _tick_world(self):
         self._world.tick()
-        return self.get_observation()
 
     def reconstruct_bev(self):
         result = {}
-        for ev_id, om_dict in self._obs_managers.items():
+        for ev_id, om in self._obs_managers.items():
             print('Rendering for ', ev_id)
-            obs_dict = {}
-            for obs_id, om in om_dict.items():
-                obs_dict[obs_id] = om.reconstruct_bev()
-            result[ev_id] = obs_dict
+            result[ev_id] = om.reconstruct_bev()
         return result
 
 main()

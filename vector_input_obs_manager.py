@@ -196,40 +196,29 @@ def image_render(road_mask, route_mask, lane_mask_all, lane_mask_broken,
 
 
 class TrafficLightHandlerInstance:
-    def __init__(self):
+    def __init__(self, world):
+        self.carla_map = world.get_map()
+
         self.num_tl = 0
         self.list_tl_actor = []
         self.list_tv_loc = []
         self.list_stopline_wps = []
         self.list_stopline_vtx = []
         self.list_junction_paths = []
-        self.carla_map = None
 
+        all_actors = world.get_actors()
+        for _actor in all_actors:
+            if 'traffic_light' in _actor.type_id:
+                tv_loc, stopline_wps, stopline_vtx, junction_paths = _get_traffic_light_waypoints(
+                    _actor, self.carla_map)
 
-def init_tl_instance(traffic_light_handler, world):
-    traffic_light_handler.carla_map = world.get_map()
+                self.list_tl_actor.append(_actor)
+                self.list_tv_loc.append(tv_loc)
+                self.list_stopline_wps.append(stopline_wps)
+                self.list_stopline_vtx.append(stopline_vtx)
+                self.list_junction_paths.append(junction_paths)
 
-    traffic_light_handler.num_tl = 0
-    traffic_light_handler.list_tl_actor = []
-    traffic_light_handler.list_tv_loc = []
-    traffic_light_handler.list_stopline_wps = []
-    traffic_light_handler.list_stopline_vtx = []
-    traffic_light_handler.list_junction_paths = []
-
-    all_actors = world.get_actors()
-    for _actor in all_actors:
-        if 'traffic_light' in _actor.type_id:
-            tv_loc, stopline_wps, stopline_vtx, junction_paths = _get_traffic_light_waypoints(
-                _actor, traffic_light_handler.carla_map)
-
-            traffic_light_handler.list_tl_actor.append(_actor)
-            traffic_light_handler.list_tv_loc.append(tv_loc)
-            traffic_light_handler.list_stopline_wps.append(stopline_wps)
-            traffic_light_handler.list_stopline_vtx.append(stopline_vtx)
-            traffic_light_handler.list_junction_paths.append(junction_paths)
-
-            traffic_light_handler.num_tl += 1
-    return traffic_light_handler
+                self.num_tl += 1
 
 
 def tl_get_stopline_vtx(traffic_light_handler, veh_loc, color, dist_threshold=50.0):
