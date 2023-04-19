@@ -10,11 +10,11 @@ import numpy as np
 import carla
 
 from carla_gym.core.zombie_walker.zombie_walker_handler import ZombieWalkerHandler
-from carla_gym.utils.traffic_light import TrafficLightHandler
 
 from stable_baselines3.common.utils import set_random_seed
 from utils.profiling_utils import profile
-from vector_input_obs_manager import VectorizedInputManager, MyTaskVehicle
+from vector_input_obs_manager import VectorizedInputManager, MyTaskVehicle, \
+    TrafficLightHandlerInstance, init_tl_instance
 
 logger = logging.getLogger(__name__)
 
@@ -222,7 +222,7 @@ class CarlaMultiAgentEnv:
         self._tm.set_random_device_seed(seed)
 
         self._world.tick()
-        TrafficLightHandler.reset(self._world)
+        self._traffic_light_handler = init_tl_instance(TrafficLightHandlerInstance(), self._world)
         self._zw_handler = ZombieWalkerHandler(self._client)
 
         self._obs_managers = {}
@@ -256,7 +256,7 @@ class CarlaMultiAgentEnv:
         for ev_id, om_dict in self._obs_managers.items():
             obs_dict[ev_id] = {}
             for obs_id, om in om_dict.items():
-                obs_dict[ev_id][obs_id] = om.get_observation()
+                obs_dict[ev_id][obs_id] = om.get_observation(self._traffic_light_handler)
         return obs_dict
 
     def step(self, control_dict):

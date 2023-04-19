@@ -1,24 +1,18 @@
 """Adapted from https://github.com/zhejz/carla-roach/ CC-BY-NC 4.0 license."""
 
-import numpy as np
-import carla
-from gym import spaces
 import cv2 as cv
-from collections import deque
 from pathlib import Path
 import h5py
 
-from carla_gym.utils.traffic_light import TrafficLightHandler
 from utils.profiling_utils import profile
 
-
+from collections import deque
+import carla_gym.utils.transforms as trans_utils
 import carla
-import weakref
 from carla_gym.core.task_actor.common.navigation.global_route_planner import GlobalRoutePlanner
 from carla_gym.core.task_actor.common.navigation.route_manipulation import location_route_to_gps, downsample_route
 import numpy as np
 import logging
-import copy
 
 from carla_gym.core.task_actor.common.criteria import blocked, collision, outside_route_lane, route_deviation, run_stop_sign
 from carla_gym.core.task_actor.common.criteria import encounter_light, run_red_light
@@ -139,6 +133,123 @@ def _get_warp_transform(ev_loc, ev_rot, width, pixels_per_meter, pixels_ev_to_bo
                         [0, 0],
                         [width-1, 0]], dtype=np.float32)
     return cv.getAffineTransform(src_pts, dst_pts)
+
+
+def _get_masks(road_mask, route_mask, lane_mask_all, lane_mask_broken,
+               tl_green_masks, tl_yellow_masks, tl_red_masks, stop_masks,
+               vehicle_masks, walker_masks, width, history_idx):
+    c_road = road_mask * 255
+    c_route = route_mask * 255
+    c_lane = lane_mask_all * 255
+    c_lane[lane_mask_broken] = 120
+
+    # masks with history
+    c_tl_history = []
+    for i in range(len(history_idx)):
+        c_tl = np.zeros([width, width], dtype=np.uint8)
+        c_tl[tl_green_masks[i]] = 80
+        c_tl[tl_yellow_masks[i]] = 170
+        c_tl[tl_red_masks[i]] = 255
+        c_tl[stop_masks[i]] = 255
+        c_tl_history.append(c_tl)
+
+    c_vehicle_history = [m * 255 for m in vehicle_masks]
+    c_walker_history = [m * 255 for m in walker_masks]
+
+    masks = np.stack((c_road, c_route, c_lane, *c_vehicle_history, *c_walker_history, *c_tl_history), axis=2)
+    masks = np.transpose(masks, [2, 0, 1])
+    return masks
+
+
+def image_render(road_mask, route_mask, lane_mask_all, lane_mask_broken,
+               tl_green_masks, tl_yellow_masks, tl_red_masks, stop_masks,
+               vehicle_masks, walker_masks, ev_mask, width, history_idx):
+    # render
+    image = np.zeros([width, width, 3], dtype=np.uint8)
+    image[road_mask] = COLOR_ALUMINIUM_5
+    image[route_mask] = COLOR_ALUMINIUM_3
+    image[lane_mask_all] = COLOR_MAGENTA
+    image[lane_mask_broken] = COLOR_MAGENTA_2
+
+    h_len = len(history_idx)-1
+    for i, mask in enumerate(stop_masks):
+        image[mask] = tint(COLOR_YELLOW_2, (h_len-i)*0.2)
+    for i, mask in enumerate(tl_green_masks):
+        image[mask] = tint(COLOR_GREEN, (h_len-i)*0.2)
+    for i, mask in enumerate(tl_yellow_masks):
+        image[mask] = tint(COLOR_YELLOW, (h_len-i)*0.2)
+    for i, mask in enumerate(tl_red_masks):
+        image[mask] = tint(COLOR_RED, (h_len-i)*0.2)
+
+    for i, mask in enumerate(vehicle_masks):
+        image[mask] = tint(COLOR_BLUE, (h_len-i)*0.2)
+    for i, mask in enumerate(walker_masks):
+        image[mask] = tint(COLOR_CYAN, (h_len-i)*0.2)
+
+    image[ev_mask] = COLOR_WHITE
+    # image[obstacle_mask] = COLOR_BLUE
+    return image
+
+
+
+class TrafficLightHandlerInstance:
+    def __init__(self):
+        self.num_tl = 0
+        self.list_tl_actor = []
+        self.list_tv_loc = []
+        self.list_stopline_wps = []
+        self.list_stopline_vtx = []
+        self.list_junction_paths = []
+        self.carla_map = None
+
+
+def init_tl_instance(traffic_light_handler, world):
+    traffic_light_handler.carla_map = world.get_map()
+
+    traffic_light_handler.num_tl = 0
+    traffic_light_handler.list_tl_actor = []
+    traffic_light_handler.list_tv_loc = []
+    traffic_light_handler.list_stopline_wps = []
+    traffic_light_handler.list_stopline_vtx = []
+    traffic_light_handler.list_junction_paths = []
+
+    all_actors = world.get_actors()
+    for _actor in all_actors:
+        if 'traffic_light' in _actor.type_id:
+            tv_loc, stopline_wps, stopline_vtx, junction_paths = _get_traffic_light_waypoints(
+                _actor, traffic_light_handler.carla_map)
+
+            traffic_light_handler.list_tl_actor.append(_actor)
+            traffic_light_handler.list_tv_loc.append(tv_loc)
+            traffic_light_handler.list_stopline_wps.append(stopline_wps)
+            traffic_light_handler.list_stopline_vtx.append(stopline_vtx)
+            traffic_light_handler.list_junction_paths.append(junction_paths)
+
+            traffic_light_handler.num_tl += 1
+    return traffic_light_handler
+
+
+def tl_get_stopline_vtx(traffic_light_handler, veh_loc, color, dist_threshold=50.0):
+    if color == 0:
+        tl_state = carla.TrafficLightState.Green
+    elif color == 1:
+        tl_state = carla.TrafficLightState.Yellow
+    elif color == 2:
+        tl_state = carla.TrafficLightState.Red
+    else:
+        raise RuntimeError('unknown color')
+
+    stopline_vtx = []
+    for i in range(traffic_light_handler.num_tl):
+        traffic_light = traffic_light_handler.list_tl_actor[i]
+        tv_loc = traffic_light_handler.list_tv_loc[i]
+        if tv_loc.distance(veh_loc) > dist_threshold:
+            continue
+        if traffic_light.state != tl_state:
+            continue
+        stopline_vtx += traffic_light_handler.list_stopline_vtx[i]
+
+    return stopline_vtx
 
 
 class MyTaskVehicle(object):
@@ -435,7 +546,7 @@ class VectorizedInputManager:
         # kernel = np.ones((11, 11), np.uint8)
         # self._road = cv.dilate(self._road, kernel, iterations=1)
 
-    def get_observation(self):
+    def get_observation(self, tl_manager):
         ev_transform = self._parent_actor.vehicle.get_transform()
         ev_loc = ev_transform.location
         ev_rot = ev_transform.rotation
@@ -455,9 +566,9 @@ class VectorizedInputManager:
         vehicles = _get_surrounding_actors(vehicle_bbox_list, is_within_distance, 1.0)
         walkers = _get_surrounding_actors(walker_bbox_list, is_within_distance, 2.0)
 
-        tl_green = TrafficLightHandler.get_stopline_vtx(ev_loc, 0)
-        tl_yellow = TrafficLightHandler.get_stopline_vtx(ev_loc, 1)
-        tl_red = TrafficLightHandler.get_stopline_vtx(ev_loc, 2)
+        tl_green = tl_get_stopline_vtx(tl_manager, ev_loc, 0)
+        tl_yellow = tl_get_stopline_vtx(tl_manager, ev_loc, 1)
+        tl_red = tl_get_stopline_vtx(tl_manager, ev_loc, 2)
         stops = _get_stops(self._parent_actor.criteria_stop)
 
         self._history_queue.append((vehicles, walkers, tl_green, tl_yellow, tl_red, stops))
@@ -494,57 +605,74 @@ class VectorizedInputManager:
 
         return result
 
-def _get_masks(road_mask, route_mask, lane_mask_all, lane_mask_broken,
-               tl_green_masks, tl_yellow_masks, tl_red_masks, stop_masks,
-               vehicle_masks, walker_masks, width, history_idx):
-    c_road = road_mask * 255
-    c_route = route_mask * 255
-    c_lane = lane_mask_all * 255
-    c_lane[lane_mask_broken] = 120
 
-    # masks with history
-    c_tl_history = []
-    for i in range(len(history_idx)):
-        c_tl = np.zeros([width, width], dtype=np.uint8)
-        c_tl[tl_green_masks[i]] = 80
-        c_tl[tl_yellow_masks[i]] = 170
-        c_tl[tl_red_masks[i]] = 255
-        c_tl[stop_masks[i]] = 255
-        c_tl_history.append(c_tl)
+def _get_traffic_light_waypoints(traffic_light, carla_map):
+    """
+    get area of a given traffic light
+    adapted from "carla-simulator/scenario_runner/srunner/scenariomanager/scenarioatomics/atomic_criteria.py"
+    """
+    base_transform = traffic_light.get_transform()
+    tv_loc = traffic_light.trigger_volume.location
+    tv_ext = traffic_light.trigger_volume.extent
 
-    c_vehicle_history = [m * 255 for m in vehicle_masks]
-    c_walker_history = [m * 255 for m in walker_masks]
+    # Discretize the trigger box into points
+    x_values = np.arange(-0.9 * tv_ext.x, 0.9 * tv_ext.x, 1.0)  # 0.9 to avoid crossing to adjacent lanes
+    area = []
+    for x in x_values:
+        point_location = base_transform.transform(tv_loc + carla.Location(x=x))
+        area.append(point_location)
 
-    masks = np.stack((c_road, c_route, c_lane, *c_vehicle_history, *c_walker_history, *c_tl_history), axis=2)
-    masks = np.transpose(masks, [2, 0, 1])
-    return masks
+    # Get the waypoints of these points, removing duplicates
+    ini_wps = []
+    for pt in area:
+        wpx = carla_map.get_waypoint(pt)
+        # As x_values are arranged in order, only the last one has to be checked
+        if not ini_wps or ini_wps[-1].road_id != wpx.road_id or ini_wps[-1].lane_id != wpx.lane_id:
+            ini_wps.append(wpx)
 
+    # Leaderboard: Advance them until the intersection
+    stopline_wps = []
+    stopline_vertices = []
+    junction_wps = []
+    for wpx in ini_wps:
+        # Below: just use trigger volume, otherwise it's on the zebra lines.
+        # stopline_wps.append(wpx)
+        # vec_forward = wpx.transform.get_forward_vector()
+        # vec_right = carla.Vector3D(x=-vec_forward.y, y=vec_forward.x, z=0)
 
-def image_render(road_mask, route_mask, lane_mask_all, lane_mask_broken,
-               tl_green_masks, tl_yellow_masks, tl_red_masks, stop_masks,
-               vehicle_masks, walker_masks, ev_mask, width, history_idx):
-    # render
-    image = np.zeros([width, width, 3], dtype=np.uint8)
-    image[road_mask] = COLOR_ALUMINIUM_5
-    image[route_mask] = COLOR_ALUMINIUM_3
-    image[lane_mask_all] = COLOR_MAGENTA
-    image[lane_mask_broken] = COLOR_MAGENTA_2
+        # loc_left = wpx.transform.location - 0.4 * wpx.lane_width * vec_right
+        # loc_right = wpx.transform.location + 0.4 * wpx.lane_width * vec_right
+        # stopline_vertices.append([loc_left, loc_right])
 
-    h_len = len(history_idx)-1
-    for i, mask in enumerate(stop_masks):
-        image[mask] = tint(COLOR_YELLOW_2, (h_len-i)*0.2)
-    for i, mask in enumerate(tl_green_masks):
-        image[mask] = tint(COLOR_GREEN, (h_len-i)*0.2)
-    for i, mask in enumerate(tl_yellow_masks):
-        image[mask] = tint(COLOR_YELLOW, (h_len-i)*0.2)
-    for i, mask in enumerate(tl_red_masks):
-        image[mask] = tint(COLOR_RED, (h_len-i)*0.2)
+        while not wpx.is_intersection:
+            next_wp = wpx.next(0.5)[0]
+            if next_wp and not next_wp.is_intersection:
+                wpx = next_wp
+            else:
+                break
+        junction_wps.append(wpx)
 
-    for i, mask in enumerate(vehicle_masks):
-        image[mask] = tint(COLOR_BLUE, (h_len-i)*0.2)
-    for i, mask in enumerate(walker_masks):
-        image[mask] = tint(COLOR_CYAN, (h_len-i)*0.2)
+        stopline_wps.append(wpx)
+        vec_forward = wpx.transform.get_forward_vector()
+        vec_right = carla.Vector3D(x=-vec_forward.y, y=vec_forward.x, z=0)
 
-    image[ev_mask] = COLOR_WHITE
-    # image[obstacle_mask] = COLOR_BLUE
-    return image
+        loc_left = wpx.transform.location - 0.4 * wpx.lane_width * vec_right
+        loc_right = wpx.transform.location + 0.4 * wpx.lane_width * vec_right
+        stopline_vertices.append([loc_left, loc_right])
+
+    # all paths at junction for this traffic light
+    junction_paths = []
+    path_wps = []
+    wp_queue = deque(junction_wps)
+    while len(wp_queue) > 0:
+        current_wp = wp_queue.pop()
+        path_wps.append(current_wp)
+        next_wps = current_wp.next(1.0)
+        for next_wp in next_wps:
+            if next_wp.is_junction:
+                wp_queue.append(next_wp)
+            else:
+                junction_paths.append(path_wps)
+                path_wps = []
+
+    return carla.Location(base_transform.transform(tv_loc)), stopline_wps, stopline_vertices, junction_paths
