@@ -83,7 +83,7 @@ def reset_ego_vehicles(actor_config, world):
         world.tick()
 
         target_transforms = []
-        ego_vehicles[ev_id] = MyTaskVehicle(carla_vehicle, target_transforms, spawn_transforms, endless=True)
+        ego_vehicles[ev_id] = MyTaskVehicle(carla_vehicle, target_transforms, spawn_transforms)
 
         ev_spawn_locations.append(carla_vehicle.get_location())
 
