@@ -163,24 +163,13 @@ def main():
     )
 
     obs = env.reset()
-    debug_frames = [[] for i in range(NUM_AGENTS)]
     timestamps = []
     print('starting the loop')
     with profile(enable=False):
-        for counter in range(200):
+        for counter in range(100):
             if counter % 50 == 0:
                 print(counter)
                 print(obs.keys())
-
-            for agent_i in range(NUM_AGENTS):
-
-                raw_input = obs[f"hero{agent_i}"]
-                #         front_rgb = raw_input['central_rgb']['data']
-                bev_rgb = raw_input['vectorized']['rendered']
-
-                #         img = overlay_images(downsample(front_rgb, 0.6), bev_rgb, (20, 20))
-                if bev_rgb is not None:
-                    debug_frames[agent_i].append(bev_rgb)
 
             control_dict = {
                 'hero%d' % i: carla.VehicleControl(throttle=0.8, steer=0, brake=0.) for i in range(NUM_AGENTS)
@@ -192,7 +181,12 @@ def main():
 
     dt = np.median(np.diff(timestamps))
     print(f"dt={dt:.2f}, FPS={1. / dt:.1f}")
-    print(len(debug_frames[0]))
+    reconstructed_bevs = env.reconstruct_bev()
+    debug_frames = []
+    for i in range(NUM_AGENTS):
+        agent_bevs = reconstructed_bevs['hero%d' % i]['vectorized']
+        debug_frames.append([el['rendered'] for el in agent_bevs])
+
     for frames in debug_frames:
         if len(frames):
             display_utils.make_video_in_temp(frames)
@@ -264,5 +258,15 @@ class CarlaMultiAgentEnv:
 
         self._world.tick()
         return self.get_observation()
+
+    def reconstruct_bev(self):
+        result = {}
+        for ev_id, om_dict in self._obs_managers.items():
+            print('Rendering for ', ev_id)
+            obs_dict = {}
+            for obs_id, om in om_dict.items():
+                obs_dict[obs_id] = om.reconstruct_bev()
+            result[ev_id] = obs_dict
+        return result
 
 main()

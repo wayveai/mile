@@ -7,15 +7,11 @@ import h5py
 from utils.profiling_utils import profile
 
 from collections import deque
-import carla_gym.utils.transforms as trans_utils
 import carla
 from carla_gym.core.task_actor.common.navigation.global_route_planner import GlobalRoutePlanner
-from carla_gym.core.task_actor.common.navigation.route_manipulation import location_route_to_gps, downsample_route
 import numpy as np
 import logging
 
-from carla_gym.core.task_actor.common.criteria import blocked, collision, outside_route_lane, route_deviation, run_stop_sign
-from carla_gym.core.task_actor.common.criteria import encounter_light, run_red_light
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -88,6 +84,7 @@ def make_lane_masks(M_warp, road, width, lane_marking_all, lane_marking_white_br
                                      (width, width)).astype(np.bool)
     return road_mask, lane_mask_all, lane_mask_broken
 
+
 def _get_mask_from_stopline_vtx(width, pixels_per_meter, world_offset, stopline_vtx, M_warp):
     mask = np.zeros([width, width], dtype=np.uint8)
     for sp_locs in stopline_vtx:
@@ -98,7 +95,6 @@ def _get_mask_from_stopline_vtx(width, pixels_per_meter, world_offset, stopline_
     return mask.astype(np.bool)
 
 
-
 def _get_history_masks(M_warp, history_queue, history_idx, width, pixels_per_meter, world_offset):
     qsize = len(history_queue)
     vehicle_masks, walker_masks, tl_green_masks, tl_yellow_masks, tl_red_masks, stop_masks = [], [], [], [], [], []
@@ -106,20 +102,20 @@ def _get_history_masks(M_warp, history_queue, history_idx, width, pixels_per_met
     for idx in history_idx:
         idx = max(idx, -1 * qsize)
 
-        vehicles, walkers, tl_green, tl_yellow, tl_red, stops = history_queue[idx]
+        item = history_queue[idx]
 
         vehicle_masks.append(
-            _get_mask_from_actor_list(vehicles, M_warp, width, pixels_per_meter, world_offset))
+            _get_mask_from_actor_list(item['vehicles'], M_warp, width, pixels_per_meter, world_offset))
         walker_masks.append(
-            _get_mask_from_actor_list(walkers, M_warp, width, pixels_per_meter, world_offset))
+            _get_mask_from_actor_list(item['walkers'], M_warp, width, pixels_per_meter, world_offset))
         tl_green_masks.append(
-            _get_mask_from_stopline_vtx(width, pixels_per_meter, world_offset, tl_green, M_warp))
+            _get_mask_from_stopline_vtx(width, pixels_per_meter, world_offset, item['tl_green'], M_warp))
         tl_yellow_masks.append(
-            _get_mask_from_stopline_vtx(width, pixels_per_meter, world_offset, tl_yellow, M_warp))
+            _get_mask_from_stopline_vtx(width, pixels_per_meter, world_offset, item['tl_yellow'], M_warp))
         tl_red_masks.append(
-            _get_mask_from_stopline_vtx(width, pixels_per_meter, world_offset, tl_red, M_warp))
+            _get_mask_from_stopline_vtx(width, pixels_per_meter, world_offset, item['tl_red'], M_warp))
         stop_masks.append(
-            _get_mask_from_actor_list(stops, M_warp, width, pixels_per_meter, world_offset))
+            _get_mask_from_actor_list(item['stops'], M_warp, width, pixels_per_meter, world_offset))
 
     return vehicle_masks, walker_masks, tl_green_masks, tl_yellow_masks, tl_red_masks, stop_masks
 
@@ -408,7 +404,7 @@ class VectorizedInputManager:
         self._scale_mask_col = obs_configs.get('scale_mask_col', 1.1)
         self._obs_config = obs_configs
 
-        self._history_queue = deque(maxlen=20)
+        self._full_history = []
 
         self._image_channels = 3
         self._masks_channels = 3 + 3*len(self._history_idx)
@@ -443,12 +439,11 @@ class VectorizedInputManager:
 
     def get_observation(self, tl_manager):
         ev_transform = self._vehicle_wrapper.vehicle.get_transform()
-        ev_loc = ev_transform.location
-        ev_rot = ev_transform.rotation
         ev_bbox = self._vehicle_wrapper.vehicle.bounding_box
         snap_shot = self._world.get_snapshot()
 
         def is_within_distance(w):
+            ev_loc = ev_transform.location
             c_distance = abs(ev_loc.x - w.location.x) < self._distance_threshold \
                 and abs(ev_loc.y - w.location.y) < self._distance_threshold \
                 and abs(ev_loc.z - w.location.z) < 8.0
@@ -461,41 +456,77 @@ class VectorizedInputManager:
         vehicles = _get_surrounding_actors(vehicle_bbox_list, is_within_distance, 1.0)
         walkers = _get_surrounding_actors(walker_bbox_list, is_within_distance, 2.0)
 
-        tl_green = tl_get_stopline_vtx(tl_manager, ev_loc, 0)
-        tl_yellow = tl_get_stopline_vtx(tl_manager, ev_loc, 1)
-        tl_red = tl_get_stopline_vtx(tl_manager, ev_loc, 2)
+        tl_green = tl_get_stopline_vtx(tl_manager, ev_transform.location, 0)
+        tl_yellow = tl_get_stopline_vtx(tl_manager, ev_transform.location, 1)
+        tl_red = tl_get_stopline_vtx(tl_manager, ev_transform.location, 2)
         stops = [] # _get_stops(self._vehicle_wrapper.criteria_stop)  (stop has tricky logic, let's ignore for now)
 
-        self._history_queue.append((vehicles, walkers, tl_green, tl_yellow, tl_red, stops))
-
-        M_warp = _get_warp_transform(ev_loc, ev_rot, self._width, self._pixels_per_meter, self._pixels_ev_to_bottom, self._world_offset)
-
-        # objects with history
-        vehicle_masks, walker_masks, tl_green_masks, tl_yellow_masks, tl_red_masks, stop_masks \
-            = _get_history_masks(
-            M_warp, self._history_queue, self._history_idx, self._width, self._pixels_per_meter, self._world_offset)
-
-        road_mask, lane_mask_all, lane_mask_broken = make_lane_masks(
-            M_warp, self._road, self._width, self._lane_marking_all, self._lane_marking_white_broken)
-
-        # route_mask
-        route_mask = make_route_mask(
-            M_warp, self._vehicle_wrapper.route_plan, self._width, self._pixels_per_meter, self._world_offset)
-
-        # ev_mask
-        ev_mask = _get_mask_from_actor_list(
-            [(ev_transform, ev_bbox.location, ev_bbox.extent)], M_warp, self._width, self._pixels_per_meter, self._world_offset)
-
-        # render
-        image = image_render(road_mask, route_mask, lane_mask_all, lane_mask_broken,
-                   tl_green_masks, tl_yellow_masks, tl_red_masks, stop_masks,
-                   vehicle_masks, walker_masks, ev_mask, self._width, self._history_idx)
-
-        masks  = _get_masks(
-           road_mask, route_mask, lane_mask_all, lane_mask_broken,
-           tl_green_masks, tl_yellow_masks, tl_red_masks, stop_masks,
-           vehicle_masks, walker_masks, self._width, self._history_idx)
-
-        result = {'rendered': image, 'masks': masks}
-
+        result = dict(
+            ev_transform=ev_transform,
+            ev_bbox=ev_bbox,
+            route_plan=self._vehicle_wrapper.route_plan,
+            vehicles=vehicles,
+            walkers=walkers,
+            tl_green=tl_green,
+            tl_yellow=tl_yellow,
+            tl_red=tl_red,
+            stops=stops
+        )
+        self._full_history.append(result)
         return result
+
+    def reconstruct_bev(self):
+        results = []
+        for idx in range(len(self._full_history)):
+            local_history = self._full_history[:idx+1]
+            image, masks = make_bev_output(
+                local_history, self._history_idx,
+                self._road, self._lane_marking_all, self._lane_marking_white_broken,
+                self._width, self._pixels_per_meter, self._pixels_ev_to_bottom, self._world_offset
+            )
+            results.append({'rendered': image, 'masks': masks})
+        return results
+
+
+def make_bev_output(
+        history_queue, history_idx,
+        road, lane_marking_all, lane_marking_white_broken,
+        width, pixels_per_meter, pixels_ev_to_bottom, world_offset):
+
+    latest = history_queue[-1]
+    ev_transform = latest['ev_transform']
+    ev_bbox = latest['ev_bbox']
+    vehicle_route = latest['route_plan']
+
+    ev_loc = ev_transform.location
+    ev_rot = ev_transform.rotation
+
+    M_warp = _get_warp_transform(ev_loc, ev_rot, width, pixels_per_meter, pixels_ev_to_bottom, world_offset)
+
+    # objects with history
+    vehicle_masks, walker_masks, tl_green_masks, tl_yellow_masks, tl_red_masks, stop_masks \
+        = _get_history_masks(
+        M_warp, history_queue, history_idx, width, pixels_per_meter, world_offset)
+
+    road_mask, lane_mask_all, lane_mask_broken = make_lane_masks(
+        M_warp, road, width, lane_marking_all, lane_marking_white_broken)
+
+    # route_mask
+    route_mask = make_route_mask(
+        M_warp, vehicle_route, width, pixels_per_meter, world_offset)
+
+    # ev_mask
+    ev_mask = _get_mask_from_actor_list(
+        [(ev_transform, ev_bbox.location, ev_bbox.extent)], M_warp, width, pixels_per_meter, world_offset)
+
+    # render
+    image = image_render(road_mask, route_mask, lane_mask_all, lane_mask_broken,
+               tl_green_masks, tl_yellow_masks, tl_red_masks, stop_masks,
+               vehicle_masks, walker_masks, ev_mask, width, history_idx)
+
+    masks  = _get_masks(
+       road_mask, route_mask, lane_mask_all, lane_mask_broken,
+       tl_green_masks, tl_yellow_masks, tl_red_masks, stop_masks,
+       vehicle_masks, walker_masks, width, history_idx)
+
+    return image, masks
