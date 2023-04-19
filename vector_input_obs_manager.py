@@ -259,211 +259,6 @@ def tl_get_stopline_vtx(traffic_light_handler, veh_loc, color, dist_threshold=50
     return stopline_vtx
 
 
-class MyTaskVehicle(object):
-
-    def __init__(self, vehicle, target_transforms, spawn_transforms):
-        """
-        vehicle: carla.Vehicle
-        target_transforms: list of carla.Transform
-        """
-        self.vehicle = vehicle
-        world = self.vehicle.get_world()
-        self._map = world.get_map()
-        self._world = world
-
-        self.criteria_collision = collision.Collision(self.vehicle, world)
-
-        # navigation
-        self._route_length = 0.0
-
-        self._target_transforms = target_transforms  # transforms
-
-        self._planner = GlobalRoutePlanner(self._map, resolution=1.0)
-
-        self._global_route = []
-
-        self._trace_route_to_global_target()
-
-        if len(self._target_transforms) == 0:
-            while self._route_length < 1000.0:
-                self._add_random_target(spawn_transforms)
-
-    def _add_random_target(self, spawn_transforms):
-        if len(self._target_transforms) == 0:
-            last_target_loc = self.vehicle.get_location()
-            ev_wp = self._map.get_waypoint(last_target_loc)
-            next_wp = ev_wp.next(6)[0]
-            new_target_transform = next_wp.transform
-        else:
-            last_target_loc = self._target_transforms[-1].location
-            last_road_id = self._map.get_waypoint(last_target_loc).road_id
-            new_target_transform = np.random.choice([x[1] for x in spawn_transforms if x[0] != last_road_id])
-
-        route_trace = self._planner.trace_route(last_target_loc, new_target_transform.location)
-        self._global_route += route_trace
-        self._target_transforms.append(new_target_transform)
-        self._route_length += _compute_route_length(route_trace)
-
-    def _trace_route_to_global_target(self):
-        current_location = self.vehicle.get_location()
-        for tt in self._target_transforms:
-            next_target_location = tt.location
-            route_trace = self._planner.trace_route(current_location, next_target_location)
-            self._global_route += route_trace
-            self._route_length += _compute_route_length(route_trace)
-            current_location = next_target_location
-
-    def clean(self):
-        self.criteria_collision.clean()
-        self.vehicle.destroy()
-
-    @property
-    def route_plan(self):
-        return self._global_route
-
-
-
-COLOR_BLACK = (0, 0, 0)
-COLOR_RED = (255, 0, 0)
-COLOR_GREEN = (0, 255, 0)
-COLOR_BLUE = (0, 0, 255)
-COLOR_CYAN = (0, 255, 255)
-COLOR_MAGENTA = (255, 0, 255)
-COLOR_MAGENTA_2 = (255, 140, 255)
-COLOR_YELLOW = (255, 255, 0)
-COLOR_YELLOW_2 = (160, 160, 0)
-COLOR_WHITE = (255, 255, 255)
-COLOR_ALUMINIUM_0 = (238, 238, 236)
-COLOR_ALUMINIUM_3 = (136, 138, 133)
-COLOR_ALUMINIUM_5 = (46, 52, 54)
-
-
-def tint(color, factor):
-    r, g, b = color
-    r = int(r + (255-r) * factor)
-    g = int(g + (255-g) * factor)
-    b = int(b + (255-b) * factor)
-    r = min(r, 255)
-    g = min(g, 255)
-    b = min(b, 255)
-    return (r, g, b)
-
-
-def _get_stops(criteria_stop):
-    stop_sign = criteria_stop._target_stop_sign
-    stops = []
-    if (stop_sign is not None) and (not criteria_stop._stop_completed):
-        bb_loc = carla.Location(stop_sign.trigger_volume.location)
-        bb_ext = carla.Vector3D(stop_sign.trigger_volume.extent)
-        bb_ext.x = max(bb_ext.x, bb_ext.y)
-        bb_ext.y = max(bb_ext.x, bb_ext.y)
-        trans = stop_sign.get_transform()
-        stops = [(carla.Transform(trans.location, trans.rotation), bb_loc, bb_ext)]
-    return stops
-
-
-class VectorizedInputManager:
-    def __init__(self, obs_configs):
-        self._width = int(obs_configs['width_in_pixels'])
-        self._pixels_ev_to_bottom = obs_configs['pixels_ev_to_bottom']
-        self._pixels_per_meter = obs_configs['pixels_per_meter']
-        self._history_idx = obs_configs['history_idx']
-        self._scale_mask_col = obs_configs.get('scale_mask_col', 1.1)
-        self._obs_config = obs_configs
-
-        self._history_queue = deque(maxlen=20)
-
-        self._image_channels = 3
-        self._masks_channels = 3 + 3*len(self._history_idx)
-        self._parent_actor = None
-        self._world = None
-
-        self._map_dir = Path(__file__).resolve().parent / 'carla_gym/core/obs_manager/birdview/maps'
-
-    def attach_ego_vehicle(self, parent_actor):
-        self._parent_actor = parent_actor
-        self._world = self._parent_actor.vehicle.get_world()
-
-        maps_h5_path = self._map_dir / (self._world.get_map().name.rsplit('/', 1)[-1] + '.h5')
-        with h5py.File(maps_h5_path, 'r', libver='latest', swmr=True) as hf:
-            self._road = np.array(hf['road'], dtype=np.uint8)
-            self._lane_marking_all = np.array(hf['lane_marking_all'], dtype=np.uint8)
-            self._lane_marking_white_broken = np.array(hf['lane_marking_white_broken'], dtype=np.uint8)
-            # self._shoulder = np.array(hf['shoulder'], dtype=np.uint8)
-            # self._parking = np.array(hf['parking'], dtype=np.uint8)
-            # self._sidewalk = np.array(hf['sidewalk'], dtype=np.uint8)
-            # self._lane_marking_yellow_broken = np.array(hf['lane_marking_yellow_broken'], dtype=np.uint8)
-            # self._lane_marking_yellow_solid = np.array(hf['lane_marking_yellow_solid'], dtype=np.uint8)
-            # self._lane_marking_white_solid = np.array(hf['lane_marking_white_solid'], dtype=np.uint8)
-
-            self._world_offset = np.array(hf.attrs['world_offset_in_meters'], dtype=np.float32)
-            assert np.isclose(self._pixels_per_meter, float(hf.attrs['pixels_per_meter']))
-
-        self._distance_threshold = np.ceil(self._width / self._pixels_per_meter)
-        # dilate road mask, lbc draw road polygon with 10px boarder
-        # kernel = np.ones((11, 11), np.uint8)
-        # self._road = cv.dilate(self._road, kernel, iterations=1)
-
-    def get_observation(self, tl_manager):
-        ev_transform = self._parent_actor.vehicle.get_transform()
-        ev_loc = ev_transform.location
-        ev_rot = ev_transform.rotation
-        ev_bbox = self._parent_actor.vehicle.bounding_box
-        snap_shot = self._world.get_snapshot()
-
-        def is_within_distance(w):
-            c_distance = abs(ev_loc.x - w.location.x) < self._distance_threshold \
-                and abs(ev_loc.y - w.location.y) < self._distance_threshold \
-                and abs(ev_loc.z - w.location.z) < 8.0
-            c_ev = abs(ev_loc.x - w.location.x) < 1.0 and abs(ev_loc.y - w.location.y) < 1.0
-            return c_distance and (not c_ev)
-
-        vehicle_bbox_list = self._world.get_level_bbs(carla.CityObjectLabel.Car)
-        walker_bbox_list = self._world.get_level_bbs(carla.CityObjectLabel.Pedestrians)
-
-        vehicles = _get_surrounding_actors(vehicle_bbox_list, is_within_distance, 1.0)
-        walkers = _get_surrounding_actors(walker_bbox_list, is_within_distance, 2.0)
-
-        tl_green = tl_get_stopline_vtx(tl_manager, ev_loc, 0)
-        tl_yellow = tl_get_stopline_vtx(tl_manager, ev_loc, 1)
-        tl_red = tl_get_stopline_vtx(tl_manager, ev_loc, 2)
-        stops = [] # _get_stops(self._parent_actor.criteria_stop)  (stop has tricky logic, let's ignore for now)
-
-        self._history_queue.append((vehicles, walkers, tl_green, tl_yellow, tl_red, stops))
-
-        M_warp = _get_warp_transform(ev_loc, ev_rot, self._width, self._pixels_per_meter, self._pixels_ev_to_bottom, self._world_offset)
-
-        # objects with history
-        vehicle_masks, walker_masks, tl_green_masks, tl_yellow_masks, tl_red_masks, stop_masks \
-            = _get_history_masks(
-            M_warp, self._history_queue, self._history_idx, self._width, self._pixels_per_meter, self._world_offset)
-
-        road_mask, lane_mask_all, lane_mask_broken = make_lane_masks(
-            M_warp, self._road, self._width, self._lane_marking_all, self._lane_marking_white_broken)
-
-        # route_mask
-        route_mask = make_route_mask(
-            M_warp, self._parent_actor.route_plan, self._width, self._pixels_per_meter, self._world_offset)
-
-        # ev_mask
-        ev_mask = _get_mask_from_actor_list(
-            [(ev_transform, ev_bbox.location, ev_bbox.extent)], M_warp, self._width, self._pixels_per_meter, self._world_offset)
-
-        # render
-        image = image_render(road_mask, route_mask, lane_mask_all, lane_mask_broken,
-                   tl_green_masks, tl_yellow_masks, tl_red_masks, stop_masks,
-                   vehicle_masks, walker_masks, ev_mask, self._width, self._history_idx)
-
-        masks  = _get_masks(
-           road_mask, route_mask, lane_mask_all, lane_mask_broken,
-           tl_green_masks, tl_yellow_masks, tl_red_masks, stop_masks,
-           vehicle_masks, walker_masks, self._width, self._history_idx)
-
-        result = {'rendered': image, 'masks': masks}
-
-        return result
-
-
 def _get_traffic_light_waypoints(traffic_light, carla_map):
     """
     get area of a given traffic light
@@ -534,3 +329,173 @@ def _get_traffic_light_waypoints(traffic_light, carla_map):
                 path_wps = []
 
     return carla.Location(base_transform.transform(tv_loc)), stopline_wps, stopline_vertices, junction_paths
+
+def _make_random_plan(initial_location, world_map, spawn_transforms):
+    planner = GlobalRoutePlanner(world_map, resolution=1.0)
+    route_length = 0.0
+    target_transforms = []
+    global_route = []
+    while route_length < 1000.0:
+        if len(target_transforms) == 0:
+            last_target_loc = initial_location
+            ev_wp = world_map.get_waypoint(last_target_loc)
+            next_wp = ev_wp.next(6)[0]
+            new_target_transform = next_wp.transform
+        else:
+            last_target_loc = target_transforms[-1].location
+            last_road_id = world_map.get_waypoint(last_target_loc).road_id
+            new_target_transform = np.random.choice([x[1] for x in spawn_transforms if x[0] != last_road_id])
+
+        route_trace = planner.trace_route(last_target_loc, new_target_transform.location)
+        global_route += route_trace
+        target_transforms.append(new_target_transform)
+        route_length += _compute_route_length(route_trace)
+    return global_route
+
+
+class VehicleWrapper(object):
+    def __init__(self, vehicle, spawn_transforms):
+        self.vehicle = vehicle
+        self.route_plan = _make_random_plan(
+            self.vehicle.get_location(), self.vehicle.get_world().get_map(), spawn_transforms)
+
+
+COLOR_BLACK = (0, 0, 0)
+COLOR_RED = (255, 0, 0)
+COLOR_GREEN = (0, 255, 0)
+COLOR_BLUE = (0, 0, 255)
+COLOR_CYAN = (0, 255, 255)
+COLOR_MAGENTA = (255, 0, 255)
+COLOR_MAGENTA_2 = (255, 140, 255)
+COLOR_YELLOW = (255, 255, 0)
+COLOR_YELLOW_2 = (160, 160, 0)
+COLOR_WHITE = (255, 255, 255)
+COLOR_ALUMINIUM_0 = (238, 238, 236)
+COLOR_ALUMINIUM_3 = (136, 138, 133)
+COLOR_ALUMINIUM_5 = (46, 52, 54)
+
+
+def tint(color, factor):
+    r, g, b = color
+    r = int(r + (255-r) * factor)
+    g = int(g + (255-g) * factor)
+    b = int(b + (255-b) * factor)
+    r = min(r, 255)
+    g = min(g, 255)
+    b = min(b, 255)
+    return (r, g, b)
+
+
+def _get_stops(criteria_stop):
+    stop_sign = criteria_stop._target_stop_sign
+    stops = []
+    if (stop_sign is not None) and (not criteria_stop._stop_completed):
+        bb_loc = carla.Location(stop_sign.trigger_volume.location)
+        bb_ext = carla.Vector3D(stop_sign.trigger_volume.extent)
+        bb_ext.x = max(bb_ext.x, bb_ext.y)
+        bb_ext.y = max(bb_ext.x, bb_ext.y)
+        trans = stop_sign.get_transform()
+        stops = [(carla.Transform(trans.location, trans.rotation), bb_loc, bb_ext)]
+    return stops
+
+
+class VectorizedInputManager:
+    def __init__(self, obs_configs):
+        self._width = int(obs_configs['width_in_pixels'])
+        self._pixels_ev_to_bottom = obs_configs['pixels_ev_to_bottom']
+        self._pixels_per_meter = obs_configs['pixels_per_meter']
+        self._history_idx = obs_configs['history_idx']
+        self._scale_mask_col = obs_configs.get('scale_mask_col', 1.1)
+        self._obs_config = obs_configs
+
+        self._history_queue = deque(maxlen=20)
+
+        self._image_channels = 3
+        self._masks_channels = 3 + 3*len(self._history_idx)
+        self._vehicle_wrapper = None
+        self._world = None
+
+        self._map_dir = Path(__file__).resolve().parent / 'carla_gym/core/obs_manager/birdview/maps'
+
+    def attach_ego_vehicle(self, parent_actor):
+        self._vehicle_wrapper = parent_actor
+        self._world = self._vehicle_wrapper.vehicle.get_world()
+
+        maps_h5_path = self._map_dir / (self._world.get_map().name.rsplit('/', 1)[-1] + '.h5')
+        with h5py.File(maps_h5_path, 'r', libver='latest', swmr=True) as hf:
+            self._road = np.array(hf['road'], dtype=np.uint8)
+            self._lane_marking_all = np.array(hf['lane_marking_all'], dtype=np.uint8)
+            self._lane_marking_white_broken = np.array(hf['lane_marking_white_broken'], dtype=np.uint8)
+            # self._shoulder = np.array(hf['shoulder'], dtype=np.uint8)
+            # self._parking = np.array(hf['parking'], dtype=np.uint8)
+            # self._sidewalk = np.array(hf['sidewalk'], dtype=np.uint8)
+            # self._lane_marking_yellow_broken = np.array(hf['lane_marking_yellow_broken'], dtype=np.uint8)
+            # self._lane_marking_yellow_solid = np.array(hf['lane_marking_yellow_solid'], dtype=np.uint8)
+            # self._lane_marking_white_solid = np.array(hf['lane_marking_white_solid'], dtype=np.uint8)
+
+            self._world_offset = np.array(hf.attrs['world_offset_in_meters'], dtype=np.float32)
+            assert np.isclose(self._pixels_per_meter, float(hf.attrs['pixels_per_meter']))
+
+        self._distance_threshold = np.ceil(self._width / self._pixels_per_meter)
+        # dilate road mask, lbc draw road polygon with 10px boarder
+        # kernel = np.ones((11, 11), np.uint8)
+        # self._road = cv.dilate(self._road, kernel, iterations=1)
+
+    def get_observation(self, tl_manager):
+        ev_transform = self._vehicle_wrapper.vehicle.get_transform()
+        ev_loc = ev_transform.location
+        ev_rot = ev_transform.rotation
+        ev_bbox = self._vehicle_wrapper.vehicle.bounding_box
+        snap_shot = self._world.get_snapshot()
+
+        def is_within_distance(w):
+            c_distance = abs(ev_loc.x - w.location.x) < self._distance_threshold \
+                and abs(ev_loc.y - w.location.y) < self._distance_threshold \
+                and abs(ev_loc.z - w.location.z) < 8.0
+            c_ev = abs(ev_loc.x - w.location.x) < 1.0 and abs(ev_loc.y - w.location.y) < 1.0
+            return c_distance and (not c_ev)
+
+        vehicle_bbox_list = self._world.get_level_bbs(carla.CityObjectLabel.Car)
+        walker_bbox_list = self._world.get_level_bbs(carla.CityObjectLabel.Pedestrians)
+
+        vehicles = _get_surrounding_actors(vehicle_bbox_list, is_within_distance, 1.0)
+        walkers = _get_surrounding_actors(walker_bbox_list, is_within_distance, 2.0)
+
+        tl_green = tl_get_stopline_vtx(tl_manager, ev_loc, 0)
+        tl_yellow = tl_get_stopline_vtx(tl_manager, ev_loc, 1)
+        tl_red = tl_get_stopline_vtx(tl_manager, ev_loc, 2)
+        stops = [] # _get_stops(self._vehicle_wrapper.criteria_stop)  (stop has tricky logic, let's ignore for now)
+
+        self._history_queue.append((vehicles, walkers, tl_green, tl_yellow, tl_red, stops))
+
+        M_warp = _get_warp_transform(ev_loc, ev_rot, self._width, self._pixels_per_meter, self._pixels_ev_to_bottom, self._world_offset)
+
+        # objects with history
+        vehicle_masks, walker_masks, tl_green_masks, tl_yellow_masks, tl_red_masks, stop_masks \
+            = _get_history_masks(
+            M_warp, self._history_queue, self._history_idx, self._width, self._pixels_per_meter, self._world_offset)
+
+        road_mask, lane_mask_all, lane_mask_broken = make_lane_masks(
+            M_warp, self._road, self._width, self._lane_marking_all, self._lane_marking_white_broken)
+
+        # route_mask
+        route_mask = make_route_mask(
+            M_warp, self._vehicle_wrapper.route_plan, self._width, self._pixels_per_meter, self._world_offset)
+
+        # ev_mask
+        ev_mask = _get_mask_from_actor_list(
+            [(ev_transform, ev_bbox.location, ev_bbox.extent)], M_warp, self._width, self._pixels_per_meter, self._world_offset)
+
+        # render
+        image = image_render(road_mask, route_mask, lane_mask_all, lane_mask_broken,
+                   tl_green_masks, tl_yellow_masks, tl_red_masks, stop_masks,
+                   vehicle_masks, walker_masks, ev_mask, self._width, self._history_idx)
+
+        masks  = _get_masks(
+           road_mask, route_mask, lane_mask_all, lane_mask_broken,
+           tl_green_masks, tl_yellow_masks, tl_red_masks, stop_masks,
+           vehicle_masks, walker_masks, self._width, self._history_idx)
+
+        result = {'rendered': image, 'masks': masks}
+
+        return result

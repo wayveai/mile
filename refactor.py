@@ -13,8 +13,8 @@ from carla_gym.core.zombie_walker.zombie_walker_handler import ZombieWalkerHandl
 
 from stable_baselines3.common.utils import set_random_seed
 from utils.profiling_utils import profile
-from vector_input_obs_manager import VectorizedInputManager, MyTaskVehicle, \
-    TrafficLightHandlerInstance, init_tl_instance
+from vector_input_obs_manager import VectorizedInputManager, \
+    TrafficLightHandlerInstance, init_tl_instance, VehicleWrapper
 
 logger = logging.getLogger(__name__)
 
@@ -82,8 +82,7 @@ def reset_ego_vehicles(actor_config, world):
         carla_vehicle = world.try_spawn_actor(blueprint, spawn_transform)
         world.tick()
 
-        target_transforms = []
-        ego_vehicles[ev_id] = MyTaskVehicle(carla_vehicle, target_transforms, spawn_transforms)
+        ego_vehicles[ev_id] = VehicleWrapper(carla_vehicle, spawn_transforms)
 
         ev_spawn_locations.append(carla_vehicle.get_location())
 
