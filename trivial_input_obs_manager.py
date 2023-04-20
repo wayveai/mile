@@ -119,22 +119,10 @@ class TrivialInputManager:
         self._distance_threshold = np.ceil(self._width / self._pixels_per_meter)
 
     def get_observation(self):
-        # ev_transform = self._vehicle.get_transform()
-        # ev_bbox = self._vehicle.bounding_box
-
         vehicle_bbox_list = self._world.get_level_bbs(carla.CityObjectLabel.Car)
         walker_bbox_list = self._world.get_level_bbs(carla.CityObjectLabel.Pedestrians)
 
-        ev_bbox2 = vehicle_bbox_list[self._agent_id + self._agent_id_shift]
-        ev_transform2 = carla.Transform(ev_bbox2.location, ev_bbox2.rotation)
-
-        # print(self._agent_id, len(vehicle_bbox_list), ev_transform.location, ev_transform2.location)
-        # for i, b in enumerate(vehicle_bbox_list):
-        #     print(b.location)
-
         result = dict(
-            ev_transform=ev_transform2,
-            ev_bbox=ev_bbox2,
             vehicle_bbox_list=vehicle_bbox_list,
             walker_bbox_list=walker_bbox_list
         )
@@ -145,6 +133,10 @@ class TrivialInputManager:
         results = []
         for idx in range(len(self._full_history)):
             item = self._full_history[idx]
+            ev_bbox = item['vehicle_bbox_list'][self._agent_id + self._agent_id_shift]
+            item['ev_bbox'] = ev_bbox
+            item['ev_transform'] = carla.Transform(ev_bbox.location, ev_bbox.rotation)
+
             image = make_bev_output(
                 item, self._road,
                 self._width, self._pixels_per_meter, self._pixels_ev_to_bottom, self._world_offset
