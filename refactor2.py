@@ -3,6 +3,8 @@ import os
 import time
 import PIL
 import PIL.Image
+
+from trivial_input_obs_manager import TrivialInputManager
 from utils import display_utils
 
 import logging
@@ -13,8 +15,7 @@ from carla_gym.core.zombie_walker.zombie_walker_handler import ZombieWalkerHandl
 
 from stable_baselines3.common.utils import set_random_seed
 from utils.profiling_utils import profile
-from vector_input_obs_manager import VectorizedInputManager, \
-    TrafficLightHandlerInstance, VehicleWrapper
+
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +84,7 @@ def reset_ego_vehicles(actor_config, world):
         carla_vehicle = world.try_spawn_actor(blueprint, spawn_transform)
         world.tick()
 
-        ego_vehicles[ev_id] = VehicleWrapper(carla_vehicle, spawn_transforms)
+        ego_vehicles[ev_id] = carla_vehicle
 
         ev_spawn_locations.append(carla_vehicle.get_location())
 
@@ -209,12 +210,11 @@ class CarlaMultiAgentEnv:
         self._tm.set_random_device_seed(seed)
 
         self._world.tick()
-        self._traffic_light_handler = TrafficLightHandlerInstance(self._world)
         self._zw_handler = ZombieWalkerHandler(self._client)
 
         self._obs_managers = {}
         for ev_id, obs_config in obs_configs.items():
-            self._obs_managers[ev_id] = VectorizedInputManager(obs_config)
+            self._obs_managers[ev_id] = TrivialInputManager(obs_config)
 
         self._timestamp = None
 
@@ -237,7 +237,7 @@ class CarlaMultiAgentEnv:
     def get_observation(self):
         obs_dict = {}
         for ev_id, om in self._obs_managers.items():
-            obs_dict[ev_id] = om.get_observation(self._traffic_light_handler)
+            obs_dict[ev_id] = om.get_observation()
         return obs_dict
 
     def step(self, control_dict):
@@ -247,7 +247,7 @@ class CarlaMultiAgentEnv:
 
     def _apply_control(self, control_dict):
         for ev_id, control in control_dict.items():
-            self.ego_vehicles[ev_id].vehicle.apply_control(control)
+            self.ego_vehicles[ev_id].apply_control(control)
 
     def _tick_world(self):
         self._world.tick()
