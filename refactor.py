@@ -157,8 +157,8 @@ def main():
     obs = env.reset()
     timestamps = []
     control_dict = {
-        # 'hero%d' % i: carla.VehicleControl(throttle=0.8, steer=0, brake=0.) for i in range(NUM_AGENTS)
-        'hero%d' % i: carla.VehicleControl(throttle=0.0, steer=0, brake=0.) for i in range(NUM_AGENTS)
+        'hero%d' % i: carla.VehicleControl(throttle=0.8, steer=0, brake=0.) for i in range(NUM_AGENTS)
+        # 'hero%d' % i: carla.VehicleControl(throttle=0.0, steer=0, brake=0.) for i in range(NUM_AGENTS)
     }
     print('starting the loop')
     with profile(enable=True):
