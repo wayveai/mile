@@ -46,7 +46,7 @@ env | egrep -v "^(HOME=|USER=|MAIL=|LC_ALL=|LS_COLORS=|LANG=|HOSTNAME=|PWD=|TERM
 # su - carla -c "sleep 2 && /home/carla/mycarla.sh" &
 
 # give writing permissions to mile folder to 'carla' user
-chmod g+rwx /home/carla/mile
+chmod -R g+rwx /home/carla/mile
 
 # Xvfb :0 -screen 0 1024x768x24 -listen tcp -ac
 exec "$@"
