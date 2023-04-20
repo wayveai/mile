@@ -71,10 +71,10 @@ def reset_ego_vehicles(actor_config, world):
 
     ev_spawn_locations = []
     ego_vehicles = {}
-    for ev_id in actor_config:
+    for ev_id, _ in enumerate(actor_config):
         bp_filter = actor_config[ev_id]['model']
         blueprint = np.random.choice(world.get_blueprint_library().filter(bp_filter))
-        blueprint.set_attribute('role_name', ev_id)
+        blueprint.set_attribute('role_name', str(ev_id))
 
         spawn_transform = np.random.choice([x[1] for x in spawn_transforms])
 
@@ -136,9 +136,7 @@ single_obs_configs = {
 }
 
 
-obs_configs = {
-    'hero%d' % i : single_obs_configs for i in range(NUM_AGENTS)
-}
+obs_configs = [single_obs_configs for i in range(NUM_AGENTS)]
 
 def main():
     server_manager = CarlaServerManager(
@@ -158,10 +156,9 @@ def main():
 
     obs = env.reset()
     timestamps = []
-    control_dict = {
-        'hero%d' % i: carla.VehicleControl(throttle=0.8, steer=0, brake=0.) for i in range(NUM_AGENTS)
-        # 'hero%d' % i: carla.VehicleControl(throttle=0.0, steer=0, brake=0.) for i in range(NUM_AGENTS)
-    }
+    control_dict = [carla.VehicleControl(throttle=0.8, steer=0, brake=0.) for i in range(NUM_AGENTS)
+        # i: carla.VehicleControl(throttle=0.0, steer=0, brake=0.) for i in range(NUM_AGENTS)
+    ]
     print('starting the loop')
     with profile(enable=True):
         for counter in range(100):
@@ -179,7 +176,7 @@ def main():
     reconstructed_bevs = env.reconstruct_bev()
     debug_frames = []
     for i in range(NUM_AGENTS):
-        agent_bevs = reconstructed_bevs['hero%d' % i]
+        agent_bevs = reconstructed_bevs[i]
         debug_frames.append([el['rendered'] for el in agent_bevs])
 
     for frames in debug_frames:
@@ -210,8 +207,8 @@ class CarlaMultiAgentEnv:
         self._zw_handler = ZombieWalkerHandler(self._client)
 
         self._obs_managers = {}
-        for ev_id, obs_config in obs_configs.items():
-            self._obs_managers[ev_id] = TrivialInputManager(obs_config)
+        for ev_id, obs_config in enumerate(obs_configs):
+            self._obs_managers[ev_id] = TrivialInputManager(obs_config, ev_id)
 
         self._timestamp = None
 
@@ -219,7 +216,7 @@ class CarlaMultiAgentEnv:
         self._world = client.get_world()
 
     def reset(self):
-        actor_config =  {'hero%d' %i : {'model': 'vehicle.lincoln.mkz_2017'} for i in range(NUM_AGENTS)}
+        actor_config =  [{'model': 'vehicle.lincoln.mkz_2017'} for i in range(NUM_AGENTS)]
         self.ego_vehicles, ev_spawn_locations = reset_ego_vehicles(actor_config, self._world)
         self._zw_handler.reset(PEDESTRIANS, ev_spawn_locations)
 
@@ -243,7 +240,7 @@ class CarlaMultiAgentEnv:
         return self.get_observation()
 
     def _apply_control(self, control_dict):
-        for ev_id, control in control_dict.items():
+        for ev_id, control in enumerate(control_dict):
             self.ego_vehicles[ev_id].apply_control(control)
 
     def _tick_world(self):

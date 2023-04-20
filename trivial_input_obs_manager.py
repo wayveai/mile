@@ -33,19 +33,12 @@ def _get_mask_from_actor_list(actor_list, M_warp, width, pixels_per_meter, world
     return mask.astype(np.bool)
 
 
-def _get_surrounding_actors(bbox_list, criterium, scale=None):
+def _get_surrounding_actors(bbox_list):
     actors = []
     for bbox in bbox_list:
-        is_within_distance = criterium(bbox)
-        if is_within_distance:
-            bb_loc = carla.Location()
-            bb_ext = carla.Vector3D(bbox.extent)
-            if scale is not None:
-                bb_ext = bb_ext * scale
-                bb_ext.x = max(bb_ext.x, 0.8)
-                bb_ext.y = max(bb_ext.y, 0.8)
-
-            actors.append((carla.Transform(bbox.location, bbox.rotation), bb_loc, bb_ext))
+        bb_loc = carla.Location()
+        bb_ext = carla.Vector3D(bbox.extent)
+        actors.append((carla.Transform(bbox.location, bbox.rotation), bb_loc, bb_ext))
     return actors
 
 
@@ -97,19 +90,16 @@ def tint(color, factor):
 
 
 class TrivialInputManager:
-    def __init__(self, obs_configs):
+    def __init__(self, obs_configs, agent_id):
         self._width = int(obs_configs['width_in_pixels'])
         self._pixels_ev_to_bottom = obs_configs['pixels_ev_to_bottom']
         self._pixels_per_meter = obs_configs['pixels_per_meter']
-        self._history_idx = obs_configs['history_idx']
         self._scale_mask_col = obs_configs.get('scale_mask_col', 1.1)
-        self._obs_config = obs_configs
 
         self._full_history = []
-
-        self._image_channels = 3
         self._vehicle = None
         self._world = None
+        self._agent_id = agent_id
 
         self._map_dir = Path(__file__).resolve().parent / 'carla_gym/core/obs_manager/birdview/maps'
 
@@ -128,27 +118,17 @@ class TrivialInputManager:
     def get_observation(self):
         ev_transform = self._vehicle.get_transform()
         ev_bbox = self._vehicle.bounding_box
-        snap_shot = self._world.get_snapshot()
-
-        def is_within_distance(w):
-            ev_loc = ev_transform.location
-            c_distance = abs(ev_loc.x - w.location.x) < self._distance_threshold \
-                and abs(ev_loc.y - w.location.y) < self._distance_threshold \
-                and abs(ev_loc.z - w.location.z) < 8.0
-            c_ev = abs(ev_loc.x - w.location.x) < 1.0 and abs(ev_loc.y - w.location.y) < 1.0
-            return c_distance and (not c_ev)
 
         vehicle_bbox_list = self._world.get_level_bbs(carla.CityObjectLabel.Car)
         walker_bbox_list = self._world.get_level_bbs(carla.CityObjectLabel.Pedestrians)
 
-        vehicles = _get_surrounding_actors(vehicle_bbox_list, is_within_distance, 1.0)
-        walkers = _get_surrounding_actors(walker_bbox_list, is_within_distance, 2.0)
+        # ev_transform = carla.Transform(bbox.location, bbox.rotation)
 
         result = dict(
             ev_transform=ev_transform,
             ev_bbox=ev_bbox,
-            vehicles=vehicles,
-            walkers=walkers,
+            vehicle_bbox_list=vehicle_bbox_list,
+            walker_bbox_list=walker_bbox_list
         )
         self._full_history.append(result)
         return result
@@ -176,8 +156,17 @@ def make_bev_output(
 
     M_warp = _get_warp_transform(ev_loc, ev_rot, width, pixels_per_meter, pixels_ev_to_bottom, world_offset)
 
-    vehicle_mask = _get_mask_from_actor_list(item['vehicles'], M_warp, width, pixels_per_meter, world_offset)
-    walker_mask = _get_mask_from_actor_list(item['walkers'], M_warp, width, pixels_per_meter, world_offset)
+    vehicles = []
+    for bbox in item['vehicle_bbox_list']:
+        vehicles.append((carla.Transform(bbox.location, bbox.rotation), carla.Location(), carla.Vector3D(bbox.extent)))
+
+    walkers = []
+    for bbox in item['walker_bbox_list']:
+        walkers.append(
+            (carla.Transform(bbox.location, bbox.rotation), carla.Location(), carla.Vector3D(bbox.extent)))
+
+    vehicle_mask = _get_mask_from_actor_list(vehicles, M_warp, width, pixels_per_meter, world_offset)
+    walker_mask = _get_mask_from_actor_list(walkers, M_warp, width, pixels_per_meter, world_offset)
 
     road_mask = cv.warpAffine(road, M_warp, (width, width)).astype(np.bool)
 
