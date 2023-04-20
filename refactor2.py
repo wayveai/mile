@@ -1,10 +1,9 @@
 import subprocess
 import os
 import time
-import PIL
-import PIL.Image
 
-from trivial_input_obs_manager import TrivialInputManager
+
+from trivial_input_obs_manager import reconstruct_bev
 from utils import display_utils
 
 import logging
@@ -111,8 +110,6 @@ class CarlaServerManager:
 
     def start(self):
         self.stop()
-        #         cmd = f'bash {self._carla_sh_str} ' \
-        #             f'-fps={self._fps} -nosound -quality-level=Epic -carla-rpc-port={self._port}'
         cmd = f'bash {self._carla_sh_str} ' \
               f'-fps={self._fps} -nosound -quality-level=Low -carla-rpc-port={self._port}'
         if not self._display:
@@ -128,16 +125,6 @@ class CarlaServerManager:
         time.sleep(self._t_sleep)
 
 
-
-single_obs_configs = {
-    'width_in_pixels': 192 * 2,
-    'pixels_ev_to_bottom': 32, 'pixels_per_meter': 5.0,
-    'history_idx': [-16, -11, -6, -1], 'scale_bbox': True, 'scale_mask_col': 1.0
-}
-
-
-obs_configs = [single_obs_configs for i in range(NUM_AGENTS)]
-
 def main():
     server_manager = CarlaServerManager(
         '/home/carla/CarlaUE4.sh', port=2000, fps=10, display=False, t_sleep=10
@@ -151,7 +138,6 @@ def main():
         port=2000,
         seed=2021,
         no_rendering=True,
-        obs_configs=obs_configs,
     )
 
     obs = env.reset()
@@ -160,32 +146,36 @@ def main():
         # i: carla.VehicleControl(throttle=0.0, steer=0, brake=0.) for i in range(NUM_AGENTS)
     ]
     print('starting the loop')
+    full_history = []
+
     with profile(enable=True):
         for counter in range(100):
             if counter % 50 == 0:
                 print(counter)
             # get observations
-            env.step(control_dict)
-
+            obs = env.step(control_dict)
+            full_history.append(obs)
             timestamps.append(time.time())
 
     dt = np.median(np.diff(timestamps))
     print(f"dt={dt:.2f}, FPS={1. / dt:.1f}")
 
-    reconstructed_bevs = env.reconstruct_bev()
-    debug_frames = []
-    for i in range(NUM_AGENTS):
-        agent_bevs = reconstructed_bevs[i]
-        debug_frames.append([el['rendered'] for el in agent_bevs])
-
-    for frames in debug_frames:
-        if len(frames):
-            display_utils.make_video_in_temp(frames)
+    single_obs_config = {
+        'width_in_pixels': 192 * 2,
+        'pixels_ev_to_bottom': 32,
+        'pixels_per_meter': 5.0,
+    }
+    reconstructed_bevs = []
+    map_name = env._world.get_map().name
+    for agent_id in range(NUM_AGENTS):
+        print('Rendering for ', agent_id)
+        agent_index = agent_id + env._agent_id_shift
+        images = reconstruct_bev(full_history, agent_index, map_name, single_obs_config)
+        display_utils.make_video_in_temp(images)
 
 
 class CarlaMultiAgentEnv:
-    def __init__(self, carla_map, host, port, seed, no_rendering,
-                 obs_configs):
+    def __init__(self, carla_map, host, port, seed, no_rendering):
 
         client = carla.Client(host, port)
         client.set_timeout(10.0)
@@ -205,8 +195,6 @@ class CarlaMultiAgentEnv:
         self._world.tick()
         self._zw_handler = ZombieWalkerHandler(self._client)
 
-        self._obs_manager = TrivialInputManager(obs_configs[0])
-
         self._timestamp = None
 
         self.ego_vehicles = {}
@@ -214,11 +202,9 @@ class CarlaMultiAgentEnv:
 
     def reset(self):
         actor_config =  [{'model': 'vehicle.lincoln.mkz_2017'} for i in range(NUM_AGENTS)]
-        agent_id_shift = len(self._world.get_level_bbs(carla.CityObjectLabel.Car))
+        self._agent_id_shift = len(self._world.get_level_bbs(carla.CityObjectLabel.Car))
         self.ego_vehicles, ev_spawn_locations = reset_ego_vehicles(actor_config, self._world)
         self._zw_handler.reset(PEDESTRIANS, ev_spawn_locations)
-
-        self._obs_manager.attach_ego_vehicle(self._world, agent_id_shift)
 
         self._world.tick()
 
@@ -226,7 +212,13 @@ class CarlaMultiAgentEnv:
         return obs_dict
 
     def get_observation(self):
-        self._obs_manager.get_observation()
+        vehicle_bbox_list = self._world.get_level_bbs(carla.CityObjectLabel.Car)
+        walker_bbox_list = self._world.get_level_bbs(carla.CityObjectLabel.Pedestrians)
+
+        return dict(
+            vehicle_bbox_list=vehicle_bbox_list,
+            walker_bbox_list=walker_bbox_list
+        )
 
     def step(self, control_dict):
         self._apply_control(control_dict)
@@ -240,11 +232,5 @@ class CarlaMultiAgentEnv:
     def _tick_world(self):
         self._world.tick()
 
-    def reconstruct_bev(self):
-        result = {}
-        for agent_id in range(len(self.ego_vehicles)):
-            print('Rendering for ', agent_id)
-            result[agent_id] = self._obs_manager.reconstruct_bev(agent_id)
-        return result
 
 main()
