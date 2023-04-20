@@ -19,8 +19,9 @@ from vector_input_obs_manager import VectorizedInputManager, \
 logger = logging.getLogger(__name__)
 
 
-NUM_AGENTS = 250
+NUM_AGENTS = 4
 FPS = 10
+PEDESTRIANS = 120
 
 
 def set_no_rendering_mode(world, no_rendering):
@@ -67,8 +68,6 @@ def reset_ego_vehicles(actor_config, world):
     world_map = world.get_map()
     spawn_transforms = _get_spawn_points(world_map)
 
-    print(f'Got {len(spawn_transforms)} spawn points')
-
     ev_spawn_locations = []
     ego_vehicles = {}
     for ev_id in actor_config:
@@ -76,20 +75,14 @@ def reset_ego_vehicles(actor_config, world):
         blueprint = np.random.choice(world.get_blueprint_library().filter(bp_filter))
         blueprint.set_attribute('role_name', ev_id)
 
-        carla_vehicle = None
-        for attempt in range(100):
-            spawn_transform = np.random.choice([x[1] for x in spawn_transforms])
+        spawn_transform = np.random.choice([x[1] for x in spawn_transforms])
 
-            wp = world_map.get_waypoint(spawn_transform.location)
-            spawn_transform.location.z = wp.transform.location.z + 1.321
+        wp = world_map.get_waypoint(spawn_transform.location)
+        spawn_transform.location.z = wp.transform.location.z + 1.321
 
-            carla_vehicle = world.try_spawn_actor(blueprint, spawn_transform)
-            if carla_vehicle is None:
-                print(f'Failed to spawn {ev_id} attempt={attempt}')
-                continue
-            break
-        assert carla_vehicle is not None
+        carla_vehicle = world.try_spawn_actor(blueprint, spawn_transform)
         world.tick()
+
         ego_vehicles[ev_id] = VehicleWrapper(carla_vehicle, spawn_transforms)
 
         ev_spawn_locations.append(carla_vehicle.get_location())
@@ -165,14 +158,15 @@ def main():
     obs = env.reset()
     timestamps = []
     control_dict = {
-        # 'hero%d' % i: carla.VehicleControl(throttle=0.8, steer=0, brake=0.) for i in range(NUM_AGENTS)
-        'hero%d' % i: carla.VehicleControl(throttle=0.0, steer=0, brake=0.) for i in range(NUM_AGENTS)
+        'hero%d' % i: carla.VehicleControl(throttle=0.8, steer=0, brake=0.) for i in range(NUM_AGENTS)
+        # 'hero%d' % i: carla.VehicleControl(throttle=0.0, steer=0, brake=0.) for i in range(NUM_AGENTS)
     }
     print('starting the loop')
-    with profile(enable=False):
+    with profile(enable=True):
         for counter in range(100):
             if counter % 50 == 0:
                 print(counter)
+                print(obs.keys())
             # get observations
             obs = env.step(control_dict)
 
@@ -180,7 +174,7 @@ def main():
 
     dt = np.median(np.diff(timestamps))
     print(f"dt={dt:.2f}, FPS={1. / dt:.1f}")
-    return
+
     reconstructed_bevs = env.reconstruct_bev()
     debug_frames = []
     for i in range(NUM_AGENTS):
@@ -228,13 +222,9 @@ class CarlaMultiAgentEnv:
         self._world = client.get_world()
 
     def reset(self):
-        num_zombie_walkers = 120
         actor_config =  {'hero%d' %i : {'model': 'vehicle.lincoln.mkz_2017'} for i in range(NUM_AGENTS)}
         self.ego_vehicles, ev_spawn_locations = reset_ego_vehicles(actor_config, self._world)
-        self._zw_handler.reset(num_zombie_walkers, ev_spawn_locations)
-
-        # for ev_id, ev_actor in self.ego_vehicles.items():
-        #     ev_actor.vehicle.set_simulate_physics(enabled=True)
+        self._zw_handler.reset(PEDESTRIANS, ev_spawn_locations)
 
         for ev_id, ev_actor in self.ego_vehicles.items():
             self._obs_managers[ev_id].attach_ego_vehicle(ev_actor)
@@ -251,15 +241,11 @@ class CarlaMultiAgentEnv:
         return obs_dict
 
     def step(self, control_dict):
-        # self._apply_control(control_dict)
+        self._apply_control(control_dict)
         self._tick_world()
-        vehicle_bbox_list = self._world.get_level_bbs(carla.CityObjectLabel.Car)
-        return vehicle_bbox_list
-
-        # return self.get_observation()
+        return self.get_observation()
 
     def _apply_control(self, control_dict):
-        # https://github.com/carla-simulator/carla/commit/2696c9684ec06f6f8c1ab865c1b432f9f10f7ee2
         for ev_id, control in control_dict.items():
             self.ego_vehicles[ev_id].vehicle.apply_control(control)
 
