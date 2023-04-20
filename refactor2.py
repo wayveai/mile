@@ -164,9 +164,8 @@ def main():
         for counter in range(100):
             if counter % 50 == 0:
                 print(counter)
-                print(obs.keys())
             # get observations
-            obs = env.step(control_dict)
+            env.step(control_dict)
 
             timestamps.append(time.time())
 
@@ -206,9 +205,7 @@ class CarlaMultiAgentEnv:
         self._world.tick()
         self._zw_handler = ZombieWalkerHandler(self._client)
 
-        self._obs_managers = {}
-        for ev_id, obs_config in enumerate(obs_configs):
-            self._obs_managers[ev_id] = TrivialInputManager(obs_config)
+        self._obs_manager = TrivialInputManager(obs_configs[0])
 
         self._timestamp = None
 
@@ -221,8 +218,7 @@ class CarlaMultiAgentEnv:
         self.ego_vehicles, ev_spawn_locations = reset_ego_vehicles(actor_config, self._world)
         self._zw_handler.reset(PEDESTRIANS, ev_spawn_locations)
 
-        for ev_id, ev_actor in self.ego_vehicles.items():
-            self._obs_managers[ev_id].attach_ego_vehicle(ev_actor, agent_id_shift)
+        self._obs_manager.attach_ego_vehicle(self._world, agent_id_shift)
 
         self._world.tick()
 
@@ -230,10 +226,7 @@ class CarlaMultiAgentEnv:
         return obs_dict
 
     def get_observation(self):
-        obs_dict = {}
-        for ev_id, om in self._obs_managers.items():
-            obs_dict[ev_id] = om.get_observation()
-        return obs_dict
+        self._obs_manager.get_observation()
 
     def step(self, control_dict):
         self._apply_control(control_dict)
@@ -249,9 +242,9 @@ class CarlaMultiAgentEnv:
 
     def reconstruct_bev(self):
         result = {}
-        for ev_id, om in self._obs_managers.items():
-            print('Rendering for ', ev_id)
-            result[ev_id] = om.reconstruct_bev()
+        for agent_id in range(len(self.ego_vehicles)):
+            print('Rendering for ', agent_id)
+            result[agent_id] = self._obs_manager.reconstruct_bev(agent_id)
         return result
 
 main()

@@ -104,19 +104,15 @@ class TrivialInputManager:
 
         self._map_dir = Path(__file__).resolve().parent / 'carla_gym/core/obs_manager/birdview/maps'
 
-    def attach_ego_vehicle(self, parent_actor, agent_id_shift):
-        self._vehicle = parent_actor
-        self._agent_id = int(self._vehicle.attributes['role_name'])
+    def attach_ego_vehicle(self, world, agent_id_shift):
         self._agent_id_shift = agent_id_shift
-        self._world = self._vehicle.get_world()
+        self._world = world
 
         maps_h5_path = self._map_dir / (self._world.get_map().name.rsplit('/', 1)[-1] + '.h5')
         with h5py.File(maps_h5_path, 'r', libver='latest', swmr=True) as hf:
             self._road = np.array(hf['road'], dtype=np.uint8)
             self._world_offset = np.array(hf.attrs['world_offset_in_meters'], dtype=np.float32)
             assert np.isclose(self._pixels_per_meter, float(hf.attrs['pixels_per_meter']))
-
-        self._distance_threshold = np.ceil(self._width / self._pixels_per_meter)
 
     def get_observation(self):
         vehicle_bbox_list = self._world.get_level_bbs(carla.CityObjectLabel.Car)
@@ -129,11 +125,12 @@ class TrivialInputManager:
         self._full_history.append(result)
         return result
 
-    def reconstruct_bev(self):
+    def reconstruct_bev(self, agent_id):
         results = []
         for idx in range(len(self._full_history)):
             item = self._full_history[idx]
-            ev_bbox = item['vehicle_bbox_list'][self._agent_id + self._agent_id_shift]
+            ev_bbox = item['vehicle_bbox_list'][agent_id + self._agent_id_shift]
+
             item['ev_bbox'] = ev_bbox
             item['ev_transform'] = carla.Transform(ev_bbox.location, ev_bbox.rotation)
 
