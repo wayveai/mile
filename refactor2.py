@@ -203,9 +203,6 @@ class CarlaMultiAgentEnv:
 
         # self._tm.set_hybrid_physics_mode(True)
 
-        # self._tm.set_global_distance_to_leading_vehicle(5.0)
-        # logger.debug("trafficmanager set_global_distance_to_leading_vehicle")
-
         set_random_seed(seed, using_cuda=True)
         self._tm.set_random_device_seed(seed)
 
