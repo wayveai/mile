@@ -24,11 +24,7 @@ def tint(color, factor):
     return (r, g, b)
 
 
-def reconstruct_bev(full_history, agent_index, map_name, obs_config):
-    width = int(obs_config['width_in_pixels'])
-    pixels_ev_to_bottom = obs_config['pixels_ev_to_bottom']
-    pixels_per_meter = obs_config['pixels_per_meter']
-
+def reconstruct_bev(full_history, agent_index, map_name, width=192 * 2, pixels_ev_to_bottom=32, pixels_per_meter=5.0):
     map_dir = Path('/home/carla/mile/carla_gym/core/obs_manager/birdview/maps')
     maps_h5_path = map_dir / (map_name.rsplit('/', 1)[-1] + '.h5')
     with h5py.File(maps_h5_path, 'r', libver='latest', swmr=True) as hf:

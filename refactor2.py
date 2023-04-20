@@ -132,8 +132,9 @@ def main():
     server_manager.start()
 
     print('Creating environment')
+    carla_map = 'Town01'
     env = CarlaMultiAgentEnv(
-        carla_map='Town01',
+        carla_map=carla_map,
         host='localhost',
         port=2000,
         seed=2021,
@@ -160,17 +161,10 @@ def main():
     dt = np.median(np.diff(timestamps))
     print(f"dt={dt:.2f}, FPS={1. / dt:.1f}")
 
-    single_obs_config = {
-        'width_in_pixels': 192 * 2,
-        'pixels_ev_to_bottom': 32,
-        'pixels_per_meter': 5.0,
-    }
-    reconstructed_bevs = []
-    map_name = env._world.get_map().name
     for agent_id in range(NUM_AGENTS):
         print('Rendering for ', agent_id)
         agent_index = agent_id + env._agent_id_shift
-        images = reconstruct_bev(full_history, agent_index, map_name, single_obs_config)
+        images = reconstruct_bev(full_history, agent_index, carla_map)
         display_utils.make_video_in_temp(images)
 
 
@@ -212,12 +206,9 @@ class CarlaMultiAgentEnv:
         return obs_dict
 
     def get_observation(self):
-        vehicle_bbox_list = self._world.get_level_bbs(carla.CityObjectLabel.Car)
-        walker_bbox_list = self._world.get_level_bbs(carla.CityObjectLabel.Pedestrians)
-
         return dict(
-            vehicle_bbox_list=vehicle_bbox_list,
-            walker_bbox_list=walker_bbox_list
+            vehicle_bbox_list=self._world.get_level_bbs(carla.CityObjectLabel.Car),
+            walker_bbox_list=self._world.get_level_bbs(carla.CityObjectLabel.Pedestrians)
         )
 
     def step(self, control_dict):
