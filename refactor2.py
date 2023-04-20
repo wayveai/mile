@@ -208,7 +208,7 @@ class CarlaMultiAgentEnv:
 
         self._obs_managers = {}
         for ev_id, obs_config in enumerate(obs_configs):
-            self._obs_managers[ev_id] = TrivialInputManager(obs_config, ev_id)
+            self._obs_managers[ev_id] = TrivialInputManager(obs_config)
 
         self._timestamp = None
 
@@ -217,11 +217,12 @@ class CarlaMultiAgentEnv:
 
     def reset(self):
         actor_config =  [{'model': 'vehicle.lincoln.mkz_2017'} for i in range(NUM_AGENTS)]
+        agent_id_shift = len(self._world.get_level_bbs(carla.CityObjectLabel.Car))
         self.ego_vehicles, ev_spawn_locations = reset_ego_vehicles(actor_config, self._world)
         self._zw_handler.reset(PEDESTRIANS, ev_spawn_locations)
 
         for ev_id, ev_actor in self.ego_vehicles.items():
-            self._obs_managers[ev_id].attach_ego_vehicle(ev_actor)
+            self._obs_managers[ev_id].attach_ego_vehicle(ev_actor, agent_id_shift)
 
         self._world.tick()
 

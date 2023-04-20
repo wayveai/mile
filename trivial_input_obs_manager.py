@@ -90,7 +90,7 @@ def tint(color, factor):
 
 
 class TrivialInputManager:
-    def __init__(self, obs_configs, agent_id):
+    def __init__(self, obs_configs):
         self._width = int(obs_configs['width_in_pixels'])
         self._pixels_ev_to_bottom = obs_configs['pixels_ev_to_bottom']
         self._pixels_per_meter = obs_configs['pixels_per_meter']
@@ -99,12 +99,15 @@ class TrivialInputManager:
         self._full_history = []
         self._vehicle = None
         self._world = None
-        self._agent_id = agent_id
+
+        self._agent_id = None
 
         self._map_dir = Path(__file__).resolve().parent / 'carla_gym/core/obs_manager/birdview/maps'
 
-    def attach_ego_vehicle(self, parent_actor):
+    def attach_ego_vehicle(self, parent_actor, agent_id_shift):
         self._vehicle = parent_actor
+        self._agent_id = int(self._vehicle.attributes['role_name'])
+        self._agent_id_shift = agent_id_shift
         self._world = self._vehicle.get_world()
 
         maps_h5_path = self._map_dir / (self._world.get_map().name.rsplit('/', 1)[-1] + '.h5')
@@ -116,17 +119,22 @@ class TrivialInputManager:
         self._distance_threshold = np.ceil(self._width / self._pixels_per_meter)
 
     def get_observation(self):
-        ev_transform = self._vehicle.get_transform()
-        ev_bbox = self._vehicle.bounding_box
+        # ev_transform = self._vehicle.get_transform()
+        # ev_bbox = self._vehicle.bounding_box
 
         vehicle_bbox_list = self._world.get_level_bbs(carla.CityObjectLabel.Car)
         walker_bbox_list = self._world.get_level_bbs(carla.CityObjectLabel.Pedestrians)
 
-        # ev_transform = carla.Transform(bbox.location, bbox.rotation)
+        ev_bbox2 = vehicle_bbox_list[self._agent_id + self._agent_id_shift]
+        ev_transform2 = carla.Transform(ev_bbox2.location, ev_bbox2.rotation)
+
+        # print(self._agent_id, len(vehicle_bbox_list), ev_transform.location, ev_transform2.location)
+        # for i, b in enumerate(vehicle_bbox_list):
+        #     print(b.location)
 
         result = dict(
-            ev_transform=ev_transform,
-            ev_bbox=ev_bbox,
+            ev_transform=ev_transform2,
+            ev_bbox=ev_bbox2,
             vehicle_bbox_list=vehicle_bbox_list,
             walker_bbox_list=walker_bbox_list
         )
