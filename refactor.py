@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 NUM_AGENTS = 4
 FPS = 10
+PEDESTRIANS = 120
 
 
 def set_no_rendering_mode(world, no_rendering):
@@ -221,10 +222,9 @@ class CarlaMultiAgentEnv:
         self._world = client.get_world()
 
     def reset(self):
-        num_zombie_walkers = 0
         actor_config =  {'hero%d' %i : {'model': 'vehicle.lincoln.mkz_2017'} for i in range(NUM_AGENTS)}
         self.ego_vehicles, ev_spawn_locations = reset_ego_vehicles(actor_config, self._world)
-        self._zw_handler.reset(num_zombie_walkers, ev_spawn_locations)
+        self._zw_handler.reset(PEDESTRIANS, ev_spawn_locations)
 
         for ev_id, ev_actor in self.ego_vehicles.items():
             self._obs_managers[ev_id].attach_ego_vehicle(ev_actor)
