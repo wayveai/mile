@@ -16,9 +16,7 @@ from utils.profiling_utils import profile
 logger = logging.getLogger(__name__)
 
 
-NUM_AGENTS = 10
 FPS = 10
-PEDESTRIANS = 120
 SIMULATE_CAR_PHYSICS = True
 SIMULATE_PED_PHYSICS = False
 CAR_THROTTLE=0.1
@@ -71,7 +69,7 @@ def reset_ego_vehicles(actor_config, world, simulate_physics):
             if carla_vehicle is not None:
                 break
 
-            print(f"Failed to spawn {ev_id} (attempt={attempt})")
+            print(f"Failed to spawn {ev_id} using {len(spawn_transforms)} spawn points (attempt={attempt})")
 
         assert carla_vehicle is not None
         carla_vehicle.set_simulate_physics(simulate_physics)
@@ -101,7 +99,7 @@ class CarlaServerManager:
 
 
 class CarlaMultiAgentEnv:
-    def __init__(self, num_agents, carla_map, host, port, seed):
+    def __init__(self, num_agents, num_pedestrians, carla_map, host, port, seed):
         client = carla.Client(host, port)
         client.set_timeout(10.0)
 
@@ -128,7 +126,7 @@ class CarlaMultiAgentEnv:
         actor_config =  [{'model': 'vehicle.lincoln.mkz_2017'} for _ in range(num_agents)]
         self._agent_id_shift = len(self._world.get_level_bbs(carla.CityObjectLabel.Car))
         self.ego_vehicles, ev_spawn_locations = reset_ego_vehicles(actor_config, self._world, SIMULATE_CAR_PHYSICS)
-        self._zw_handler.reset(PEDESTRIANS, ev_spawn_locations)
+        self._zw_handler.reset(num_pedestrians, ev_spawn_locations)
         for w in self._zw_handler.zombie_walkers.values():
             w._walker.set_simulate_physics(SIMULATE_PED_PHYSICS)
 
@@ -148,11 +146,13 @@ class CarlaMultiAgentEnv:
         self._zw_handler.clean()
 
 
-def main(num_agents):
+def measure_fps(carla_map, num_agents, num_pedestrians, seed):
     _ = CarlaServerManager('/home/carla/CarlaUE4.sh', port=2000, fps=10, display=False, t_sleep=10)
     print(f'Creating environment with {num_agents} ego vehicles')
-    carla_map = 'Town01'
-    env = CarlaMultiAgentEnv(num_agents, carla_map=carla_map, host='localhost', port=2000, seed=2021)
+    env = CarlaMultiAgentEnv(
+        num_agents=num_agents,
+        num_pedestrians=num_pedestrians,
+        carla_map=carla_map, host='localhost', port=2000, seed=seed)
     timestamps = []
     full_history = []
     control = carla.VehicleControl(throttle=CAR_THROTTLE, steer=0, brake=0.)
@@ -169,7 +169,7 @@ def main(num_agents):
                 print(f"Finished {counter} interations")
 
     dt = np.median(np.diff(timestamps))
-    print(f"dt={dt:.2f}, FPS={1. / dt:.1f}")
+    print(f"dt={dt:.2f}, FPS={1. / dt:.1f} (dt_std={np.std(np.diff(timestamps))})")
 
     # from trivial_input_obs_manager import reconstruct_bev
     # from utils import display_utils
@@ -181,5 +181,35 @@ def main(num_agents):
     return 1./dt
 
 
-main(NUM_AGENTS)
-main(NUM_AGENTS*2)
+if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser(description="Measure FPS of a simulator depending on the number of vehicles.")
+    parser.add_argument('--carla_map', type=str, default='Town01', help='Name of the CARLA map to use.')
+    parser.add_argument('--seed', type=int, default=2021, help='Seed for random number generation.')
+    parser.add_argument('--num_pedestrians', type=int, default=120, help='Number of pedestrians in the simulation.')
+    parser.add_argument('--num_trials', type=int, default=5, help='Number of trials to run for each vehicle count.')
+
+    args = parser.parse_args()
+
+    num_vehicles = [1, 10, 50, 100, 150, 200, 250]
+    results = []
+
+    for num_agents in num_vehicles:
+        fps_values = []
+        for trial in range(args.num_trials):
+            print(f"Testing {num_agents} vehicles (trial={trial})")
+            fps = measure_fps(args.carla_map, num_agents, args.num_pedestrians, args.seed)
+            fps_values.append(fps)
+        results.append(fps_values)
+
+
+    print(num_vehicles)
+    print('FPS:', [np.mean(r) for r in results])
+    print('STds:', [np.std(r) for r in results])
+
+    print("Num Vehicles | Mean FPS | Std FPS")
+    print("---------------------------------")
+    for num_agents, fps_values in zip(num_vehicles, results):
+        mean_fps = np.mean(fps_values)
+        std_fps = np.std(fps_values)
+        print(f"{num_agents:11d} | {mean_fps:8.2f} | {std_fps:7.2f}")
