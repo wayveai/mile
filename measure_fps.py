@@ -203,7 +203,7 @@ if __name__ == '__main__':
         results.append(fps_values)
 
 
-    print(num_vehicles)
+    print("Num vehicles:", num_vehicles)
     print('FPS:', [np.mean(r) for r in results])
     print('STds:', [np.std(r) for r in results])
 
