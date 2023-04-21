@@ -37,8 +37,8 @@ fi
 
 # docker stop ${docker_image_name}
 # docker rm ${docker_image_name}
-#GPUS="device=4"
-GPUS="all"
+GPUS="device=4"
+# GPUS="all"
 
 # --ipc=host is needed for X display
 # if you can't connect to VNC, check put X11 log at /var/log/x11vnc.log
