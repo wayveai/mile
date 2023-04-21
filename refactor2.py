@@ -3,9 +3,6 @@ import os
 import time
 
 
-from trivial_input_obs_manager import reconstruct_bev
-from utils import display_utils
-
 import logging
 import numpy as np
 import carla
@@ -174,11 +171,14 @@ def main(num_agents):
     dt = np.median(np.diff(timestamps))
     print(f"dt={dt:.2f}, FPS={1. / dt:.1f}")
 
+    # from trivial_input_obs_manager import reconstruct_bev
+    # from utils import display_utils
     # for agent_id in range(num_agents):
     #     print('Rendering for ', agent_id)
     #     agent_index = agent_id + env._agent_id_shift
     #     images = reconstruct_bev(full_history, agent_index, carla_map)
     #     display_utils.make_video_in_temp(images)
+    return 1./dt
 
 
 main(NUM_AGENTS)
