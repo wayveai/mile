@@ -52,7 +52,7 @@ class DataModule(pl.LightningDataModule):
             shuffle=False,
             num_workers=self.cfg.N_WORKERS,
             pin_memory=True,
-            drop_last=True,
+            drop_last=False,
             sampler=self.val_sampler,
         )
 
@@ -101,7 +101,7 @@ class CarlaDataset(Dataset):
             stride = int(self.cfg.DATASET.STRIDE_SEC * CARLA_FPS)
             # Loop across all elements in the dataset, and make all elements in a sequence belong to the same run
             start_index = int(CARLA_FPS * self.cfg.DATASET.FILTER_BEGINNING_OF_RUN_SEC)
-            total_length = len(data_run) - stride * self.sequence_length
+            total_length = len(data_run) - stride * (self.sequence_length - 1)
             for i in range(start_index, total_length):
                 frame_indices = range(i, i + stride * self.sequence_length, stride)
                 data_pointers.append((run, list(frame_indices)))
