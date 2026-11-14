@@ -89,10 +89,10 @@ class DiagGaussianDistribution():
         for i, (acc_suggest, steer_suggest) in enumerate(exploration_suggests):
             if acc_suggest != '':
                 mu[i, 0] = self.acc_exploration_dist[acc_suggest][0]
-                sigma[i, 0] = self.acc_exploration_dist[acc_suggest][1]
+                sigma[i, 0] = self.acc_exploration_dist[acc_suggest][1].exp()
             if steer_suggest != '':
                 mu[i, 1] = self.steer_exploration_dist[steer_suggest][0]
-                sigma[i, 1] = self.steer_exploration_dist[steer_suggest][1]
+                sigma[i, 1] = self.steer_exploration_dist[steer_suggest][1].exp()
 
         dist_ent = Normal(mu, sigma)
 

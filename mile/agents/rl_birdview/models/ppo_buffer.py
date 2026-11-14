@@ -143,6 +143,11 @@ class PpoBuffer():
     def get(self, batch_size: Optional[int] = None) -> Generator[PpoBufferSamples, None, None]:
         assert self.full, ''
         indices = np.random.permutation(self.buffer_size * self.n_envs)
+        # Normalize before flattening so the sampled advantages use these values.
+        adv_mean = np.mean(self.advantages)
+        adv_std = np.std(self.advantages) + np.finfo(np.float32).eps
+        self.advantages = (self.advantages - adv_mean) / adv_std
+
         # Prepare the data
         for tensor in ['actions', 'values', 'log_probs', 'advantages', 'returns',
                        'mus', 'sigmas', 'exploration_suggests']:
@@ -150,11 +155,6 @@ class PpoBuffer():
         self.flat_observations = {}
         for k in self.observations.keys():
             self.flat_observations[k] = self.flatten(self.observations[k])
-
-        # spinning up: the next two lines implement the advantage normalization trick
-        adv_mean = np.mean(self.advantages)
-        adv_std = np.std(self.advantages) + np.finfo(np.float32).eps
-        self.advantages = (self.advantages - adv_mean) / adv_std
 
         # Return everything, don't create minibatches
         if batch_size is None:
