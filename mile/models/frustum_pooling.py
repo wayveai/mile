@@ -95,10 +95,10 @@ class FrustumPooling(nn.Module):
         self.register_buffer('frustum', torch.zeros(0,), persistent=False)
 
     def initialize_frustum(self, image):
-        if self.frustum.shape[0] == 0:
+        fH, fW = image.shape[-3:-1]
+        if self.frustum.shape[:3] != (self.D, fH, fW):
             device = image.device
             # make grid in image plane
-            fH, fW = image.shape[-3:-1]
             ogfH, ogfW = fH * self.downsample, fW * self.downsample
             ds = self.ds.view(-1, 1, 1).expand(-1, fH, fW)
             xs = torch.linspace(0, ogfW - 1, fW, dtype=torch.float, device=device).view(1, 1, fW).expand(self.D, fH, fW)
@@ -141,9 +141,8 @@ class FrustumPooling(nn.Module):
         # transform world points to bev coords
         geom_feats[:, 0] = geom_feats[:, 0] * self.bev_intrinsics[0, 0] + self.bev_intrinsics[0, 2]
         geom_feats[:, 1] = geom_feats[:, 1] * self.bev_intrinsics[1, 1] + self.bev_intrinsics[1, 2]
-        # TODO: seems like things < -10m also get projected.
         geom_feats[:, 2] = (geom_feats[:, 2] - self.bx[2] + self.dx[2] / 2.) / self.dx[2]
-        geom_feats = geom_feats.long()
+        geom_feats = geom_feats.floor().long()
 
         batch_ix = torch.cat([torch.full(size=(Nprime // B, 1), fill_value=ix,
                                          device=x.device, dtype=torch.long) for ix in range(B)])
