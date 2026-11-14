@@ -8,6 +8,8 @@ from mile.constants import SEMANTIC_SEG_WEIGHTS
 class SegmentationLoss(nn.Module):
     def __init__(self, use_top_k=False, top_k_ratio=1.0, use_weights=False, poly_one=False, poly_one_coefficient=0.0):
         super().__init__()
+        if use_top_k and not 0 < top_k_ratio <= 1:
+            raise ValueError('top_k_ratio must be in (0, 1]')
         self.use_top_k = use_top_k
         self.top_k_ratio = top_k_ratio
         self.use_weights = use_weights
@@ -35,14 +37,14 @@ class SegmentationLoss(nn.Module):
         )
 
         if self.poly_one:
-            prob = torch.exp(-loss)
+            prob = torch.exp(-F.cross_entropy(prediction, target, reduction='none'))
             loss_poly_one = self.poly_one_coefficient * (1-prob)
             loss = loss + loss_poly_one
 
         loss = loss.view(b, s, -1)
         if self.use_top_k:
             # Penalises the top-k hardest pixels
-            k = int(self.top_k_ratio * loss.shape[2])
+            k = max(1, int(self.top_k_ratio * loss.shape[2]))
             loss = loss.topk(k, dim=-1)[0]
 
         return torch.mean(loss)
@@ -87,7 +89,7 @@ class SpatialRegressionLoss(nn.Module):
         # ignore_index is the same across all channels
         mask = target[:, :, :1] != self.ignore_index
         if mask.sum() == 0:
-            return prediction.new_zeros(1)[0].float()
+            return prediction.sum() * 0.0
 
         loss = self.loss_fn(prediction, target, reduction='none')
 
@@ -104,18 +106,20 @@ class ProbabilisticLoss(nn.Module):
         self.remove_first_timestamp = remove_first_timestamp
 
     def forward(self, prior_mu, prior_sigma, posterior_mu, posterior_sigma):
-        posterior_var = posterior_sigma[:, 1:] ** 2
-        prior_var = prior_sigma[:, 1:] ** 2
-
-        posterior_log_sigma = torch.log(posterior_sigma[:, 1:])
-        prior_log_sigma = torch.log(prior_sigma[:, 1:])
+        start = 1 if self.remove_first_timestamp else 0
+        posterior_mu = posterior_mu[:, start:]
+        posterior_sigma = posterior_sigma[:, start:]
+        prior_mu = prior_mu[:, start:]
+        prior_sigma = prior_sigma[:, start:]
+        posterior_var = posterior_sigma ** 2
+        prior_var = prior_sigma ** 2
 
         kl_div = (
-                prior_log_sigma - posterior_log_sigma - 0.5
-                + (posterior_var + (posterior_mu[:, 1:] - prior_mu[:, 1:]) ** 2) / (2 * prior_var)
+                torch.log(prior_sigma) - torch.log(posterior_sigma) - 0.5
+                + (posterior_var + (posterior_mu - prior_mu) ** 2) / (2 * prior_var)
         )
-        first_kl = - posterior_log_sigma[:, :1] - 0.5 + (posterior_var[:, :1] + posterior_mu[:, :1] ** 2) / 2
-        kl_div = torch.cat([first_kl, kl_div], dim=1)
+        if kl_div.numel() == 0:
+            return kl_div.sum()
 
         # Sum across channel dimension
         # Average across batch dimension, keep time dimension for monitoring
